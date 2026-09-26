@@ -9,10 +9,10 @@ Pipeline (NOVA_PIPELINE=board, the default):
                         ▲                                   │
                         └──── student marks (text stream) ◄─┘
 
-Gemini Live replaces the Deepgram -> LLM -> Murf cascade: it hears the
-student directly, so barge-in is native and it can read tone of voice, which
-a transcript throws away. Lessons are planned out-of-band by Gemini 3.8 Flash
-(board.LessonPlanner) so the Live model never goes silent composing a board.
+Gemini Live hears the student directly, so barge-in is native and it can read
+tone of voice, which a transcript throws away. Lessons are planned out-of-band
+by Gemini 3.8 Flash (board.LessonPlanner) so the Live model never goes silent
+composing a board.
 """
 
 from __future__ import annotations

@@ -75,9 +75,8 @@ places come from Wikipedia.
 
 | Folder | What it is |
 |---|---|
-| [`Telugu-Nova/`](./Telugu-Nova/) | **Agent Acharya — the submitted app.** `backend/` is the LiveKit agent, `frontend/` is the Next.js whiteboard. |
-| [`Voice-Pipeline`](./Voice-Pipeline/) → [`Agent-Handoff`](./Agent-Handoff/) | The earlier build log: the voice tutor as it grew, one capability per folder (voice pipeline, persona, frontend, memory, live tools, outbound calls, escalation, analytics, agent handoff). |
-| [`CS-Nova/`](./CS-Nova/) | An earlier snapshot of the computer-science tutor. |
+| [`Telugu-Nova/backend`](./Telugu-Nova/backend/) | The live teacher — a LiveKit agent on Gemini 3.8 Live |
+| [`Telugu-Nova/frontend`](./Telugu-Nova/frontend/) | The whiteboard web app (Next.js) |
 
 Key backend files in `Telugu-Nova/backend/src/`:
 

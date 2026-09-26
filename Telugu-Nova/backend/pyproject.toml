@@ -3,15 +3,15 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-starter-python"
+name = "agent-acharya"
 version = "1.0.0"
-description = "Voice AI agent starter powered by Murf Falcon TTS and LiveKit Agents"
+description = "Agent Acharya: a live AI teacher on a shared whiteboard, on Gemini Live"
 requires-python = ">=3.10, <3.15"
 
 dependencies = [
     "asyncpg>=0.31.0",
-    "livekit-agents[deepgram,google,openai,silero,turn-detector]~=1.4",
-    "livekit-murf>=0.1.1",
+    "httpx",
+    "livekit-agents[google]~=1.4",
     "livekit-plugins-noise-cancellation~=0.2",
     "python-dotenv",
 ]

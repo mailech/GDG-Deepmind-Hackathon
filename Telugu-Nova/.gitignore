@@ -33,7 +33,6 @@ dist/
 .turbo/
 
 # --- Generated media ----------------------------------------------------------
-# Murf TTS output produced while testing voices — regenerable, and it grows the
 # repo fast.
 voice-samples/
 *.mp3
@@ -50,3 +49,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# LiveKit CLI deployment config (project-specific)
+livekit.toml

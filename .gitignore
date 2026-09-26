@@ -42,7 +42,6 @@ credentials.json
 **/.turbo/
 
 # --- Generated media ----------------------------------------------------------
-# Murf TTS output from voice/accent testing. Regenerable, and it grows fast.
 voice-samples/
 *.mp3
 *.wav
@@ -60,7 +59,24 @@ Thumbs.db
 npm-debug.log*
 pnpm-debug.log*
 
-# The upstream Murf starter clone. Kept locally as a reference, but it carries
-# its own .git directory — committing it creates a broken grey gitlink on
-# GitHub. The Day-1 code lives in Voice-Pipeline-D1/ instead.
+# Local reference material.
 Instructions/
+
+# Earlier iterations, notes and drafts: kept locally, not part of this repo.
+/Voice-Pipeline/
+/Persona-Guardrails/
+/Frontend/
+/Memory/
+/Live-Tools/
+/Outbound-Calls/
+/Human-Escalation/
+/Analytics/
+/Agent-Handoff/
+/CS-Nova/
+/voice-samples/
+/BLOG.md
+/BLOG-DEVTO.md
+/BLOG-MEDIUM.md
+/MEDIUM-FIXES.md
+/system-design.md
+*.mp4

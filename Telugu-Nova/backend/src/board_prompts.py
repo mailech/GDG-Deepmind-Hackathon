@@ -7,8 +7,11 @@ needs something the cascade never had — how to teach with a board, and how
 to handle a student who interrupts by drawing on it.
 """
 
+from pathlib import Path
+
 from locale_map import LocaleProfile
-from prompts import REGISTERS_DIR, load_register
+
+REGISTERS_DIR = Path(__file__).parent / "registers"
 
 IDENTITY = """\
 # WHO YOU ARE
@@ -246,13 +249,14 @@ transfer to yourself. If in doubt, answer it yourself.\
 
 
 def _register(profile: LocaleProfile) -> str:
-    """The board teacher's dialect pack: the general-subject variant if one
-    exists. The original packs say "teach only CS" — right for the old phone
-    tutor, wrong for a teacher of everything."""
-    general = REGISTERS_DIR / f"{profile.register_pack}_general.md"
-    if general.exists():
-        return general.read_text(encoding="utf-8")
-    return load_register(profile)
+    """The dialect guide for the default language, if there is one."""
+    pack = REGISTERS_DIR / f"{profile.register_pack}.md"
+    if pack.exists():
+        return pack.read_text(encoding="utf-8")
+    return (
+        f"Speak natural, everyday {profile.language} as people actually talk — "
+        f"not textbook or news-reader register."
+    )
 
 
 def build_board_prompt(profile: LocaleProfile, key: str = "nova") -> str:
