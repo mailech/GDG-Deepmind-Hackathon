@@ -26,6 +26,8 @@ import analytics
 import escalations
 import memory
 import practice
+from board import LessonPlanner
+from board_session import run_board_session
 from locale_map import (
     DEFAULT_PROFILE,
     LocaleProfile,
@@ -64,6 +66,10 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "vertex")
 #     list order against fixed Hindi and Telugu audio)
 # So the language is fixed per call, chosen by the student's profile.
 STT_PROVIDER = os.getenv("STT_PROVIDER", "deepgram")
+
+# "board" (default): Gemini Live teaching on the shared whiteboard.
+# "cascade": the original Deepgram -> Gemini -> Murf voice pipeline.
+NOVA_PIPELINE = os.getenv("NOVA_PIPELINE", "board")
 
 
 # Languages the student may switch between mid-call. Order matters only as a
@@ -691,9 +697,20 @@ server = AgentServer()
 
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
+    # One planner per process. It is warmed at the start of each board session
+    # rather than here: its async HTTP client binds to the event loop it first
+    # runs on, and this setup hook's loop is not the job's.
+    proc.userdata["planner"] = LessonPlanner()
 
 
 server.setup_fnc = prewarm
+
+
+def _is_outbound(ctx: JobContext) -> bool:
+    try:
+        return json.loads(ctx.job.metadata or "{}").get("direction") == "outbound"
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 
 @server.rtc_session(agent_name="nova-te")
@@ -703,6 +720,14 @@ async def my_agent(ctx: JobContext):
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
+
+    # The whiteboard class runs on Gemini Live. A phone call has no board, so
+    # outbound calls (and NOVA_PIPELINE=cascade) keep the Deepgram -> Gemini
+    # -> Murf pipeline below.
+    if NOVA_PIPELINE == "board" and not _is_outbound(ctx):
+        planner = ctx.proc.userdata.get("planner") or LessonPlanner()
+        await run_board_session(ctx, PROFILE, planner)
+        return
 
     # Open the connection pool before the first turn, so the initial lookup is
     # not paying for a cold TLS handshake while the student waits.

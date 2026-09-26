@@ -33,18 +33,19 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'Murf AI',
-  pageTitle: 'Nova — మీ కంప్యూటర్ సైన్స్ అన్న',
-  pageDescription: 'కోడ్ దగ్గర ఆగిపోయినవా? నోవాని అడుగు. Powered by Murf Falcon.',
+  companyName: 'Agent Acharya',
+  pageTitle: 'Agent Acharya (AA) — your live AI teacher',
+  pageDescription:
+    'Learn anything on a live board: Acharya talks, draws, researches and makes pictures while you ask.',
 
   supportsChatInput: true,
   supportsVideoInput: true,
   supportsScreenShare: true,
   isPreConnectBufferEnabled: true,
 
-  logo: '/murf-logo.svg',
+  logo: '/aa-logo.svg',
   accent: '#f5a524',
-  logoDark: '/murf-logo-dark.svg',
+  logoDark: '/aa-logo.svg',
   accentDark: '#f5a524',
   startButtonText: 'మాట్లాడదాం',
 

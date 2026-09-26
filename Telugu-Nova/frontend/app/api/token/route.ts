@@ -43,14 +43,17 @@ export async function POST(req: Request) {
         { ignoreUnknownFields: true }
       );
     }
-      
+
     // Generate participant token
     const participantName = 'user';
     const participantIdentity = `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
     const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10_000)}`;
 
+    // The interface language the student picked; the agent starts in it.
+    const lang = /(?:^|; )nova_lang=([a-z]{2})/.exec(req.headers.get('cookie') ?? '')?.[1] ?? 'en';
+
     const participantToken = await createParticipantToken(
-      { identity: participantIdentity, name: participantName },
+      { identity: participantIdentity, name: participantName, attributes: { language: lang } },
       roomName,
       roomConfig
     );

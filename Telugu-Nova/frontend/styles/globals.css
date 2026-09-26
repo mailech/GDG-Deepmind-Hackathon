@@ -122,3 +122,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Nova's whiteboard. Real handwriting faces come from next/font variables set
+   on <html>; the SVG font-family attributes are only the snapshot fallback. */
+.nova-board text {
+  font-family: var(--font-hand), var(--font-telugu), 'Comic Sans MS', cursive;
+}
+.nova-board text.mono {
+  font-family: var(--font-commit-mono), ui-monospace, monospace;
+}

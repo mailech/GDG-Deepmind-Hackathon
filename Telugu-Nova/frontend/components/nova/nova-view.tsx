@@ -1,17 +1,27 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ConnectionState, Track } from 'livekit-client';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   useAgent,
   useDataChannel,
+  useMaybeRoomContext,
   useSessionContext,
   useSessionMessages,
   useTrackToggle,
   useTrackTranscription,
 } from '@livekit/components-react';
+import { Board } from '@/components/nova/board/board';
 import { Canvas, type CanvasPayload } from '@/components/nova/canvas';
+import {
+  LANGS,
+  type Lang,
+  LangContext,
+  readLangCookie,
+  useT,
+  writeLangCookie,
+} from '@/components/nova/i18n';
 
 /**
  * Day 3 frontend for Nova — a Computer Science companion for Telugu-speaking
@@ -100,10 +110,10 @@ const THEMES: Record<string, AgentTheme> = {
 const themeFor = (id: string) => THEMES[id] ?? THEMES.nova;
 
 const AGENT_NAME: Record<string, string> = {
-  nova: 'నోవా',
-  algo: 'అల్గో',
-  keerthi: 'కీర్తి',
-  vikram: 'विक्रम',
+  nova: 'Nova',
+  algo: 'Algo',
+  keerthi: 'Keerthi',
+  vikram: 'Vikram',
 };
 
 // ---------------------------------------------------------------------------
@@ -167,7 +177,7 @@ function Mark({ tint = C.clay, pulse = false }: { tint?: string; pulse?: boolean
         className="relative flex size-16 items-center justify-center rounded-full font-mono text-xl font-semibold"
         style={{ background: `${tint}1A`, color: tint }}
       >
-        {'{ }'}
+        AA
       </div>
     </div>
   );
@@ -222,26 +232,30 @@ function PrimaryButton({
 // ---------------------------------------------------------------------------
 
 function ReadyScreen({ onStart }: { onStart: () => void }) {
+  const t = useT();
   return (
     <Shell>
       <Mark />
       <p className="font-mono text-[10px] tracking-[0.22em] uppercase" style={{ color: C.inkSoft }}>
-        Computer Science
+        {t.tagline}
       </p>
       <h1 className="mt-2.5 text-[32px] font-bold" style={{ color: C.ink }}>
-        నోవా
+        Agent Acharya
       </h1>
       <p
-        className="mt-3 mb-9 max-w-[15rem] text-center text-[15px] leading-relaxed"
+        className="mt-3 mb-9 max-w-[18rem] text-center text-[15px] leading-relaxed"
         style={{ color: C.inkSoft }}
       >
-        కోడ్ దగ్గర ఆగిపోయినవా? అడుగు — coding, DSA, OS, ఏదైనా.
+        {t.readyBody}
       </p>
 
-      <PrimaryButton onClick={onStart}>మాట్లాడదాం</PrimaryButton>
+      <div className="mb-4 w-full">
+        <LanguagePicker />
+      </div>
+      <PrimaryButton onClick={onStart}>{t.start}</PrimaryButton>
 
       <p className="mt-4 text-[12px]" style={{ color: C.inkSoft }}>
-        మైక్ అనుమతి అడుగుతుంది
+        {t.micNote}
       </p>
     </Shell>
   );
@@ -252,14 +266,15 @@ function ReadyScreen({ onStart }: { onStart: () => void }) {
 // ---------------------------------------------------------------------------
 
 function ConnectingScreen() {
+  const t = useT();
   return (
     <Shell>
       <Mark pulse />
       <h2 className="text-[22px] font-bold" style={{ color: C.ink }}>
-        కలుపుతున్నా…
+        {t.connecting}
       </h2>
       <p className="mt-2 text-center text-[15px]" style={{ color: C.inkSoft }}>
-        ఒక్క సెకను ఆగు రా. నోవా వస్తుంది.
+        {t.connectingBody}
       </p>
       <div className="mt-7 flex gap-2" aria-hidden>
         {[0, 1, 2].map((i) => (
@@ -284,6 +299,49 @@ function ConnectingScreen() {
 
 type Line = { id: string; mine: boolean; text: string; at: number };
 
+// ---------------------------------------------------------------------------
+// Chat history — kept in this browser across classes
+// ---------------------------------------------------------------------------
+
+type Saved = Line & { who: string };
+const HISTORY_KEY = 'aa_chat_history';
+
+function loadHistory(): Saved[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? (JSON.parse(raw) as Saved[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(items: Saved[]) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(-400)));
+  } catch {
+    /* storage full or blocked: history is a convenience, not a requirement */
+  }
+}
+
+function HistoryLine({ line, dim }: { line: Saved; dim?: boolean }) {
+  return (
+    <div className={line.mine ? 'text-right' : 'text-left'} style={{ opacity: dim ? 0.6 : 1 }}>
+      <span
+        className="mb-1 block font-mono text-[9px] tracking-[0.14em] uppercase"
+        style={{ color: C.inkSoft }}
+      >
+        {line.who}
+      </span>
+      <span
+        className="inline-block max-w-[88%] rounded-xl px-3 py-1.5 text-[14px] leading-relaxed"
+        style={{ background: line.mine ? C.line : `${C.clay}1A`, color: C.ink }}
+      >
+        {line.text}
+      </span>
+    </div>
+  );
+}
+
 /** Collapse repeats of the same speaker saying the same thing.
  *  Interim and final segments can arrive under different ids. */
 function dedupe(lines: Line[]): Line[] {
@@ -302,10 +360,13 @@ function dedupe(lines: Line[]): Line[] {
 // 3. LIVE — listening / thinking / speaking
 // ---------------------------------------------------------------------------
 
-const STATUS: Record<string, { te: string; en: string; tint: string }> = {
-  listening: { te: 'నేను వింటున్నా', en: 'listening to you', tint: C.sage },
-  thinking: { te: 'ఆలోచిస్తున్నా…', en: 'thinking', tint: C.amber },
-  speaking: { te: 'నోవా మాట్లాడుతుంది', en: 'agent is speaking', tint: C.sky },
+const STATUS: Record<
+  string,
+  { key: 'listening' | 'thinking' | 'speaking'; en: string; tint: string }
+> = {
+  listening: { key: 'listening', en: 'listening to you', tint: C.sage },
+  thinking: { key: 'thinking', en: 'thinking', tint: C.amber },
+  speaking: { key: 'speaking', en: 'agent is speaking', tint: C.sky },
 };
 
 function LiveScreen({
@@ -321,6 +382,7 @@ function LiveScreen({
 }) {
   const agent = useAgent();
   const session = useSessionContext();
+  const tr = useT();
 
   // Transcripts come straight off the audio tracks. useSessionMessages only
   // carries typed chat, so on a voice-only call it stays empty — reading the
@@ -351,6 +413,13 @@ function LiveScreen({
       .filter((l) => l.text?.trim())
       .sort((a, b) => a.at - b.at)
   );
+  // Earlier classes, loaded once; this class is appended as it happens.
+  const [earlier] = useState<Saved[]>(() => loadHistory());
+  useEffect(() => {
+    if (!lines.length) return;
+    saveHistory([...earlier, ...lines.map((l) => ({ ...l, who: l.mine ? tr.you : who.name }))]);
+  }, [lines, earlier, tr.you, who.name]);
+
   const { toggle: toggleMic, enabled: micOn } = useTrackToggle({
     source: Track.Source.Microphone,
   });
@@ -398,7 +467,7 @@ function LiveScreen({
               className="flex size-10 items-center justify-center rounded-xl font-mono text-sm font-semibold"
               style={{ background: `${who.tint}1F`, color: who.tint }}
             >
-              {'{ }'}
+              AA
             </div>
             <div className="flex-1">
               <p className="text-[16px] font-bold" style={{ color: C.ink }}>
@@ -422,6 +491,10 @@ function LiveScreen({
           </motion.div>
         </AnimatePresence>
 
+        <div className="mt-4">
+          <LanguagePicker />
+        </div>
+
         {/* who is speaking */}
         <div className="mt-6 flex flex-col items-center">
           <div
@@ -435,7 +508,7 @@ function LiveScreen({
               transition={{ duration: 1.5, repeat: Infinity }}
             />
             <span className="text-[14px] font-semibold" style={{ color: status.tint }}>
-              {status.te}
+              {tr[status.key]}
             </span>
           </div>
           <p
@@ -458,9 +531,28 @@ function LiveScreen({
           className="mt-4 min-h-0 flex-1 overflow-y-auto rounded-2xl p-3.5"
           style={{ background: t.paper, border: `1px solid ${t.edge}` }}
         >
+          {earlier.length > 0 && (
+            <div className="mb-3 flex flex-col gap-2.5">
+              <p
+                className="text-center font-mono text-[10px] tracking-[0.18em] uppercase"
+                style={{ color: C.inkSoft }}
+              >
+                {tr.earlier}
+              </p>
+              {earlier.slice(-60).map((l) => (
+                <HistoryLine key={`h-${l.id}-${l.at}`} line={l} dim />
+              ))}
+              <p
+                className="mt-1 text-center font-mono text-[10px] tracking-[0.18em] uppercase"
+                style={{ color: C.inkSoft }}
+              >
+                {tr.thisClass}
+              </p>
+            </div>
+          )}
           {feed.length === 0 ? (
             <p className="pt-10 text-center text-[13px]" style={{ color: C.inkSoft }}>
-              మాట్లాడు — ఇక్కడ కనిపిస్తుంది
+              {tr.transcriptEmpty}
             </p>
           ) : (
             <div className="flex flex-col gap-2.5">
@@ -472,7 +564,7 @@ function LiveScreen({
                       className="mb-1 block font-mono text-[9px] tracking-[0.14em] uppercase"
                       style={{ color: C.inkSoft }}
                     >
-                      {mine ? 'నువ్వు' : 'నోవా'}
+                      {mine ? tr.you : who.name}
                     </span>
                     <span
                       className="inline-block max-w-[88%] rounded-xl px-3 py-1.5 text-[14px] leading-relaxed"
@@ -497,21 +589,22 @@ function LiveScreen({
             className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold transition hover:brightness-[0.98]"
             style={{ background: t.paper, border: `1px solid ${t.edge}`, color: C.ink }}
           >
-            {micOn ? 'మైక్ ఆఫ్' : 'మైక్ ఆన్'}
+            {micOn ? tr.micOff : tr.micOn}
           </button>
           <button
             onClick={onEnd}
             className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold text-white transition hover:brightness-[1.06]"
             style={{ background: C.rose }}
           >
-            కాల్ ఆపు
+            {tr.endCall}
           </button>
         </div>
       </motion.aside>
 
-      {/* RIGHT — code + flowcharts */}
-      <section className="min-h-0 flex-1">
-        <Canvas items={canvas} />
+      {/* RIGHT — the shared whiteboard. The older card canvas only shows when
+          the cascade pipeline pushed cards and nothing has been drawn. */}
+      <section className="min-h-[60svh] flex-1 lg:min-h-0">
+        <Board fallback={canvas.length ? <Canvas items={canvas} /> : undefined} />
       </section>
     </motion.div>
   );
@@ -522,16 +615,49 @@ function LiveScreen({
 // ---------------------------------------------------------------------------
 
 function EndedScreen({ turns, onRestart }: { turns: number; onRestart: () => void }) {
+  const t = useT();
+  const [history, setHistory] = useState<Saved[]>([]);
+  useEffect(() => setHistory(loadHistory()), []);
   return (
     <Shell>
       <Mark tint={C.sage} />
       <h2 className="text-[22px] font-bold" style={{ color: C.ink }}>
-        కాల్ అయిపోయింది
+        {t.ended}
       </h2>
       <p className="mt-2 mb-8 text-center text-[15px]" style={{ color: C.inkSoft }}>
-        {turns > 0 ? `${turns} సార్లు మాట్లాడుకున్నాం. మళ్ళీ రా!` : 'మళ్ళీ ఎప్పుడైనా రా రా.'}
+        {turns > 0 ? t.endedTurns(turns) : t.endedNone}
       </p>
-      <PrimaryButton onClick={onRestart}>మళ్ళీ మాట్లాడదాం</PrimaryButton>
+      <PrimaryButton onClick={onRestart}>{t.again}</PrimaryButton>
+      {history.length > 0 && (
+        <div className="mt-6 w-full">
+          <div className="mb-2 flex items-center justify-between">
+            <p
+              className="font-mono text-[10px] tracking-[0.18em] uppercase"
+              style={{ color: C.inkSoft }}
+            >
+              {t.history}
+            </p>
+            <button
+              onClick={() => {
+                saveHistory([]);
+                setHistory([]);
+              }}
+              className="text-[12px] underline"
+              style={{ color: C.inkSoft }}
+            >
+              {t.clearHistory}
+            </button>
+          </div>
+          <div
+            className="flex max-h-72 flex-col gap-2.5 overflow-y-auto rounded-2xl p-3"
+            style={{ background: C.paper, border: `1px solid ${C.line}` }}
+          >
+            {history.slice(-80).map((l) => (
+              <HistoryLine key={`e-${l.id}-${l.at}`} line={l} />
+            ))}
+          </div>
+        </div>
+      )}
       <p
         className="mt-6 font-mono text-[10px] tracking-[0.22em] uppercase"
         style={{ color: C.inkSoft }}
@@ -548,27 +674,19 @@ function EndedScreen({ turns, onRestart }: { turns: number; onRestart: () => voi
 
 const MIC_COPY: Record<MicError, { title: string; body: string; how: string[] }> = {
   denied: {
-    title: 'మైక్ ఆఫ్‌లో ఉంది',
-    body: 'బ్రౌజర్ మైక్ వాడనివ్వట్లేదు. నోవా నిన్ను వినాలంటే మైక్ కావాలి.',
-    how: [
-      'Address bar లో ఎడమవైపు lock icon నొక్కు',
-      'Microphone → Allow అని పెట్టు',
-      'ఈ page ని reload చెయ్యి',
-    ],
+    title: 'Microphone is blocked',
+    body: 'The browser is not allowing the microphone. Nova needs it to hear you.',
+    how: ['Click the lock icon in the address bar', 'Set Microphone to Allow', 'Reload this page'],
   },
   notfound: {
-    title: 'మైక్ దొరకలేదు',
-    body: 'ఈ device లో microphone కనిపించట్లేదు.',
-    how: [
-      'Headset లేదా mic connect చెయ్యి',
-      'System settings లో input device చూడు',
-      'Reload చెయ్యి',
-    ],
+    title: 'No microphone found',
+    body: 'This device does not seem to have a microphone.',
+    how: ['Connect a headset or mic', 'Check the input device in system settings', 'Reload'],
   },
   other: {
-    title: 'మైక్ ఓపెన్ కాలేదు',
-    body: 'మైక్ వాడటానికి కుదర్లేదు. వేరే app వాడుతుందేమో చూడు.',
-    how: ['Meet / Zoom లాంటివి close చెయ్యి', 'Browser reload చెయ్యి', 'మళ్ళీ try చెయ్యి'],
+    title: 'Could not open the microphone',
+    body: 'Another app may be using it.',
+    how: ['Close Meet / Zoom and similar apps', 'Reload the browser', 'Try again'],
   },
 };
 
@@ -600,7 +718,7 @@ function MicErrorScreen({ kind, onRetry }: { kind: MicError; onRetry: () => void
           className="mb-3 font-mono text-[10px] tracking-[0.18em] uppercase"
           style={{ color: C.inkSoft }}
         >
-          ఇలా సరిచెయ్యి
+          How to fix
         </p>
         <ol className="flex flex-col gap-2.5">
           {copy.how.map((step, i) => (
@@ -618,7 +736,7 @@ function MicErrorScreen({ kind, onRetry }: { kind: MicError; onRetry: () => void
       </div>
 
       <div className="mt-6 w-full">
-        <PrimaryButton onClick={onRetry}>మళ్ళీ try చెయ్యి</PrimaryButton>
+        <PrimaryButton onClick={onRetry}>Try again</PrimaryButton>
       </div>
     </Shell>
   );
@@ -635,7 +753,52 @@ const FADE = {
   transition: { duration: 0.26 },
 };
 
+/** Language dropdown. Changing it re-labels the UI and tells the teacher to switch. */
+function LanguagePicker() {
+  const { lang, setLang } = useContext(LangContext);
+  const t = useT();
+  return (
+    <label className="flex w-full items-center gap-2 text-[12px]" style={{ color: C.inkSoft }}>
+      <span className="font-mono tracking-[0.14em] uppercase">{t.language}</span>
+      <select
+        value={lang}
+        onChange={(e) => setLang(e.target.value as Lang)}
+        className="flex-1 rounded-xl px-3 py-2 text-[14px] font-semibold outline-none"
+        style={{ background: C.paper, border: `1px solid ${C.line}`, color: C.ink }}
+      >
+        {LANGS.map((l) => (
+          <option key={l.code} value={l.code}>
+            {l.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function NovaView() {
+  const [lang, setLangState] = useState<Lang>('en');
+  const room = useMaybeRoomContext();
+  useEffect(() => setLangState(readLangCookie()), []);
+  const setLang = useCallback(
+    (l: Lang) => {
+      setLangState(l);
+      writeLangCookie(l);
+      // Mid-class switch: tell whoever is teaching to change language now.
+      room?.localParticipant
+        .sendText(JSON.stringify({ type: 'language', lang: l }), { topic: 'nova-board-student' })
+        .catch(() => {});
+    },
+    [room]
+  );
+  return (
+    <LangContext.Provider value={{ lang, setLang }}>
+      <NovaViewInner />
+    </LangContext.Provider>
+  );
+}
+
+function NovaViewInner() {
   const session = useSessionContext();
   const { connectionState, isConnected, start, end } = session;
   const { messages } = useSessionMessages(session);
@@ -655,7 +818,7 @@ export function NovaView() {
     role: string;
     tint: string;
     lang: string;
-  }>({ id: 'nova', name: 'నోవా', role: 'Computer Science', tint: C.clay, lang: 'తెలుగు' });
+  }>({ id: 'nova', name: 'Acharya', role: 'Teacher', tint: C.clay, lang: 'English' });
   const wasConnected = useRef(false);
 
   // The agent pushes code and flowcharts here over the data channel while it
@@ -718,10 +881,10 @@ export function NovaView() {
     setHandoffs([]);
     setAgentId({
       id: 'nova',
-      name: 'నోవా',
-      role: 'Computer Science',
+      name: 'Acharya',
+      role: 'Teacher',
       tint: C.clay,
-      lang: 'తెలుగు',
+      lang: 'English',
     });
     await start();
   }, [start]);
