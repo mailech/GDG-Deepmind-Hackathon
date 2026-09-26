@@ -582,6 +582,9 @@ class Board:
         self.pages: list[Page] = [Page("b1", "Board 1")]
         self.current = self.pages[0]
         self._improvised = 0
+        # Per-session tag, so things drawn in a continued chat never reuse the
+        # ids of things drawn the first time round.
+        self._tag = os.urandom(2).hex()
 
     # Current-page shorthands, so tools read naturally.
     @property
@@ -634,6 +637,27 @@ class Board:
             await self.publish({"op": "board_new", "title": page.title})
         return page
 
+    def restore(self, book: dict) -> None:
+        """Rebuild the pages of a chat being continued, from the browser's copy,
+        so the teacher can point at what is already drawn."""
+        pages: list[Page] = []
+        for pid in book.get("order") or []:
+            p = (book.get("pages") or {}).get(pid) or {}
+            page = Page(str(pid), str(p.get("title") or pid))
+            steps = p.get("steps") or []
+            page.revealed = int(p.get("revealed") or 0)
+            if steps:
+                page.lesson = {"title": page.title, "steps": steps}
+            for step in steps[: page.revealed]:
+                for el in step.get("elements") or []:
+                    if el.get("id"):
+                        page.elements[el["id"]] = el
+            pages.append(page)
+        if pages:
+            self.pages = pages
+            active = book.get("active")
+            self.current = next((p for p in pages if p.id == active), pages[-1])
+
     async def open_page(self, page: Page, announce: bool = True) -> None:
         self.current = page
         if announce:
@@ -673,7 +697,7 @@ class Board:
 
     def new_id(self, kind: str) -> str:
         self._improvised += 1
-        return f"x{kind[:3]}{self._improvised}"
+        return f"x{self._tag}{kind[:3]}{self._improvised}"
 
     async def add(self, el: dict, after: str | None = None) -> None:
         """Draw an improvised element, placed after `after` if it is on the board."""

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ConnectionState, Track } from 'livekit-client';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -12,7 +12,7 @@ import {
   useTrackToggle,
   useTrackTranscription,
 } from '@livekit/components-react';
-import { clearArchive } from '@/components/nova/board/archive';
+import { clearArchive, loadBoard } from '@/components/nova/board/archive';
 import { Board } from '@/components/nova/board/board';
 import { Canvas, type CanvasPayload } from '@/components/nova/canvas';
 import {
@@ -41,7 +41,7 @@ import {
  * the interface stays quiet — no hard contrast, no glow, nothing shouting.
  */
 
-type Screen = 'ready' | 'connecting' | 'live' | 'ended' | 'mic-error' | 'replay';
+type Screen = 'ready' | 'connecting' | 'live' | 'ended' | 'mic-error';
 
 // Comfort palette — muted, warm, low-contrast.
 const C = {
@@ -453,6 +453,8 @@ const STATUS: Record<
 
 function LiveScreen({
   chatId,
+  resume,
+  onHome,
   onNewChat,
   onEnd,
   canvas,
@@ -460,6 +462,8 @@ function LiveScreen({
   handoffs,
 }: {
   chatId: string;
+  resume: Chat | null;
+  onHome: () => void;
   onNewChat: () => void;
   onEnd: () => void;
   canvas: CanvasPayload[];
@@ -499,15 +503,38 @@ function LiveScreen({
       .filter((l) => l.text?.trim())
       .sort((a, b) => a.at - b.at)
   );
-  // This class is its own chat, saved as it happens.
+  // This class is its own chat, saved as it happens. A continued chat keeps
+  // its earlier lines in front.
+  const previous = useMemo(() => resume?.lines ?? [], [resume]);
   useEffect(() => {
     if (!lines.length) return;
     saveChat({
       id: chatId,
-      at: lines[0].at || Date.now(),
-      lines: lines.map((l) => ({ ...l, who: l.mine ? tr.you : who.name })),
+      at: previous[0]?.at || lines[0].at || Date.now(),
+      lines: [...previous, ...lines.map((l) => ({ ...l, who: l.mine ? tr.you : who.name }))],
     });
-  }, [lines, chatId, tr.you, who.name]);
+  }, [lines, previous, chatId, tr.you, who.name]);
+
+  // Continuing a chat: once the teacher is in the room, hand it the old
+  // conversation and board so it can pick up where it left off.
+  const handedOver = useRef(false);
+  useEffect(() => {
+    if (!resume || handedOver.current || !agent.isConnected || !session.room) return;
+    handedOver.current = true;
+    const room = session.room;
+    void (async () => {
+      const saved = await loadBoard<{ book: unknown }>(chatId);
+      const transcript = resume.lines
+        .slice(-40)
+        .map((l) => `${l.mine ? 'Student' : 'Teacher'}: ${l.text}`)
+        .join('\n');
+      await room.localParticipant
+        .sendText(JSON.stringify({ type: 'resume', transcript, book: saved?.book }), {
+          topic: 'nova-board-student',
+        })
+        .catch(() => {});
+    })();
+  }, [resume, agent.isConnected, session.room, chatId]);
 
   const { toggle: toggleMic, enabled: micOn } = useTrackToggle({
     source: Track.Source.Microphone,
@@ -620,7 +647,14 @@ function LiveScreen({
           className="mt-4 min-h-0 flex-1 overflow-y-auto rounded-2xl p-3.5"
           style={{ background: t.paper, border: `1px solid ${t.edge}` }}
         >
-          {feed.length === 0 ? (
+          {previous.length > 0 && (
+            <div className="mb-3 flex flex-col gap-2.5">
+              {previous.map((l) => (
+                <HistoryLine key={`p-${l.id}-${l.at}`} line={l} dim />
+              ))}
+            </div>
+          )}
+          {feed.length === 0 && previous.length === 0 ? (
             <p className="pt-10 text-center text-[13px]" style={{ color: C.inkSoft }}>
               {tr.transcriptEmpty}
             </p>
@@ -662,6 +696,13 @@ function LiveScreen({
             {micOn ? tr.micOff : tr.micOn}
           </button>
           <button
+            onClick={onHome}
+            className="rounded-2xl px-4 py-3.5 text-[14px] font-semibold transition hover:brightness-[0.98]"
+            style={{ background: t.paper, border: `1px solid ${t.edge}`, color: C.ink }}
+          >
+            {tr.home}
+          </button>
+          <button
             onClick={onNewChat}
             className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold transition hover:brightness-[0.98]"
             style={{ background: t.paper, border: `1px solid ${t.edge}`, color: C.ink }}
@@ -681,82 +722,13 @@ function LiveScreen({
       {/* RIGHT — the shared whiteboard. The older card canvas only shows when
           the cascade pipeline pushed cards and nothing has been drawn. */}
       <section className="min-h-[60svh] flex-1 lg:min-h-0">
-        <Board chatId={chatId} fallback={canvas.length ? <Canvas items={canvas} /> : undefined} />
+        <Board
+          chatId={chatId}
+          restore={!!resume}
+          fallback={canvas.length ? <Canvas items={canvas} /> : undefined}
+        />
       </section>
     </motion.div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// REPLAY — a previous chat, with its board, exactly as it was left
-// ---------------------------------------------------------------------------
-
-function ReplayScreen({
-  chat,
-  onBack,
-  onNew,
-}: {
-  chat: Chat;
-  onBack: () => void;
-  onNew: () => void;
-}) {
-  const t = useT();
-  return (
-    <div className="flex h-svh w-full flex-col lg:flex-row" style={{ background: C.paper }}>
-      <aside
-        className="flex w-full shrink-0 flex-col px-6 py-6 lg:h-svh lg:w-[380px]"
-        style={{ background: C.card, borderRight: `1px solid ${C.line}` }}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className="flex size-10 items-center justify-center rounded-xl font-mono text-sm font-semibold"
-            style={{ background: `${C.clay}1F`, color: C.clay }}
-          >
-            AA
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[16px] font-bold" style={{ color: C.ink }}>
-              {t.history}
-            </p>
-            <p
-              className="font-mono text-[10px] tracking-[0.16em] uppercase"
-              style={{ color: C.clay }}
-            >
-              {chat.at
-                ? new Date(chat.at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-                : ''}
-            </p>
-          </div>
-        </div>
-        <div
-          className="mt-5 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto rounded-2xl p-3.5"
-          style={{ background: C.paper, border: `1px solid ${C.line}` }}
-        >
-          {chat.lines.map((l) => (
-            <HistoryLine key={`r-${l.id}-${l.at}`} line={l} />
-          ))}
-        </div>
-        <div className="mt-4 flex w-full gap-3">
-          <button
-            onClick={onBack}
-            className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold transition hover:brightness-[0.98]"
-            style={{ background: C.paper, border: `1px solid ${C.line}`, color: C.ink }}
-          >
-            {t.back}
-          </button>
-          <button
-            onClick={onNew}
-            className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold text-white transition hover:brightness-[1.06]"
-            style={{ background: C.clay }}
-          >
-            {t.newChat}
-          </button>
-        </div>
-      </aside>
-      <section className="min-h-[60svh] flex-1 lg:min-h-0">
-        <Board chatId={chat.id} replay />
-      </section>
-    </div>
   );
 }
 
@@ -942,7 +914,8 @@ function NovaViewInner() {
   }>({ id: 'nova', name: 'Acharya', role: 'Teacher', tint: C.clay, lang: 'English' });
   const wasConnected = useRef(false);
   const [chatId, setChatId] = useState(() => `c${Date.now()}`);
-  const [replaying, setReplaying] = useState<Chat | null>(null);
+  const [resume, setResume] = useState<Chat | null>(null);
+  const goingHome = useRef(false);
   // "New chat" mid-class: end this session, then go straight into a fresh one.
   const restarting = useRef(false);
 
@@ -993,38 +966,53 @@ function NovaViewInner() {
       if (restarting.current) {
         restarting.current = false;
         void handleStartRef.current();
+      } else if (goingHome.current) {
+        goingHome.current = false; // straight back to the start screen
       } else {
         setHasEnded(true);
       }
     }
   }, [isConnected, messages.length]);
 
-  const handleStart = useCallback(async () => {
-    setMicError(null);
-    const err = await requestMic();
-    if (err) {
-      setMicError(err);
-      return;
-    }
-    setHasEnded(false);
-    setReplaying(null);
-    setChatId(`c${Date.now()}`);
-    setCanvas([]);
-    setHandoffs([]);
-    setAgentId({
-      id: 'nova',
-      name: 'Acharya',
-      role: 'Teacher',
-      tint: C.clay,
-      lang: 'English',
-    });
-    await start();
-  }, [start]);
+  // Start a class: a brand-new chat, or (with `chat`) continue an old one.
+  const startClass = useCallback(
+    async (chat: Chat | null) => {
+      setMicError(null);
+      const err = await requestMic();
+      if (err) {
+        setMicError(err);
+        return;
+      }
+      setHasEnded(false);
+      setResume(chat);
+      setChatId(chat ? chat.id : `c${Date.now()}`);
+      // The token route reads this to tell the agent to wait for the history.
+      document.cookie = `nova_resume=${chat ? 1 : 0}; path=/; max-age=60; samesite=lax`;
+      setCanvas([]);
+      setHandoffs([]);
+      setAgentId({
+        id: 'nova',
+        name: 'Acharya',
+        role: 'Teacher',
+        tint: C.clay,
+        lang: 'English',
+      });
+      await start();
+    },
+    [start]
+  );
+  const handleStart = useCallback(() => startClass(null), [startClass]);
+  const handleContinue = useCallback((chat: Chat) => startClass(chat), [startClass]);
 
   const handleStartRef = useRef(handleStart);
   handleStartRef.current = handleStart;
 
   const handleEnd = useCallback(async () => {
+    await end();
+  }, [end]);
+
+  const handleHome = useCallback(async () => {
+    goingHome.current = true;
     await end();
   }, [end]);
 
@@ -1037,20 +1025,18 @@ function NovaViewInner() {
   if (micError) screen = 'mic-error';
   else if (isConnected) screen = 'live';
   else if (connectionState === ConnectionState.Connecting) screen = 'connecting';
-  else if (replaying) screen = 'replay';
   else if (hasEnded) screen = 'ended';
 
   return (
     <AnimatePresence mode="wait">
       <motion.div key={screen} {...FADE}>
-        {screen === 'ready' && <ReadyScreen onStart={handleStart} onOpen={setReplaying} />}
-        {screen === 'replay' && replaying && (
-          <ReplayScreen chat={replaying} onBack={() => setReplaying(null)} onNew={handleStart} />
-        )}
+        {screen === 'ready' && <ReadyScreen onStart={handleStart} onOpen={handleContinue} />}
         {screen === 'connecting' && <ConnectingScreen />}
         {screen === 'live' && (
           <LiveScreen
             chatId={chatId}
+            resume={resume}
+            onHome={handleHome}
             onNewChat={handleNewChat}
             onEnd={handleEnd}
             canvas={canvas}
@@ -1059,7 +1045,7 @@ function NovaViewInner() {
           />
         )}
         {screen === 'ended' && (
-          <EndedScreen turns={turns} onRestart={handleStart} onOpen={setReplaying} />
+          <EndedScreen turns={turns} onRestart={handleStart} onOpen={handleContinue} />
         )}
         {screen === 'mic-error' && <MicErrorScreen kind={micError!} onRetry={handleStart} />}
       </motion.div>

@@ -50,10 +50,17 @@ export async function POST(req: Request) {
     const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10_000)}`;
 
     // The interface language the student picked; the agent starts in it.
-    const lang = /(?:^|; )nova_lang=([a-z]{2})/.exec(req.headers.get('cookie') ?? '')?.[1] ?? 'en';
+    const cookie = req.headers.get('cookie') ?? '';
+    const lang = /(?:^|; )nova_lang=([a-z]{2})/.exec(cookie)?.[1] ?? 'en';
+    // Set just before "continue chat": the agent waits for the old history.
+    const resume = /(?:^|; )nova_resume=1/.test(cookie) ? '1' : '0';
 
     const participantToken = await createParticipantToken(
-      { identity: participantIdentity, name: participantName, attributes: { language: lang } },
+      {
+        identity: participantIdentity,
+        name: participantName,
+        attributes: { language: lang, resume },
+      },
       roomName,
       roomConfig
     );

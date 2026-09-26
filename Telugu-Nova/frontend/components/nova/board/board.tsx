@@ -254,10 +254,13 @@ export function Board({
   fallback,
   chatId,
   replay = false,
+  restore = false,
 }: {
   fallback?: React.ReactNode;
   chatId?: string;
   replay?: boolean;
+  /** Live, but continuing a saved chat: load its board first. */
+  restore?: boolean;
 }) {
   const [book, dispatch] = useReducer(reduceBook, FIRST_BOOK);
   const [research, dispatchResearch] = useReducer(reduceResearch, []);
@@ -271,13 +274,15 @@ export function Board({
   // --- archive: save the live board as it changes; load it when replaying
   const chatRef = useRef(chatId);
   chatRef.current = chatId;
+  // Until a continued chat's board is loaded, do not save the empty one over it.
+  const restoredRef = useRef(!restore);
   useEffect(() => {
-    if (replay || !chatId) return;
+    if (replay || !chatId || !restoredRef.current) return;
     const t = setTimeout(() => void saveBoard(chatId, { book, research }), 600);
     return () => clearTimeout(t);
   }, [book, research, chatId, replay]);
   useEffect(() => {
-    if (!replay || !chatId) return;
+    if (!(replay || restore) || !chatId) return;
     let alive = true;
     void (async () => {
       const saved = await loadBoard<{ book: Book; research: ResearchItem[] }>(chatId);
@@ -285,19 +290,21 @@ export function Board({
       if (!alive) return;
       if (saved?.book) dispatch({ op: 'restore', book: saved.book });
       if (saved?.research) dispatchResearch({ op: 'restore', items: saved.research });
-      setMedia(
-        Object.fromEntries(
+      restoredRef.current = true;
+      setMedia((live) => ({
+        ...Object.fromEntries(
           Object.entries(blobs).map(([id, m]) => [
             id,
             { url: URL.createObjectURL(m.blob), mime: m.mime, source: m.source },
           ])
-        )
-      );
+        ),
+        ...live,
+      }));
     })();
     return () => {
       alive = false;
     };
-  }, [replay, chatId]);
+  }, [replay, restore, chatId]);
 
   useDataChannel(BOARD_TOPIC, (msg) => {
     if (replay) return;

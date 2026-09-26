@@ -18,6 +18,7 @@ a transcript throws away. Lessons are planned out-of-band by Gemini 3.8 Flash
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -41,7 +42,12 @@ from livekit.plugins import google, noise_cancellation
 import analytics
 import memory
 from board import STUDENT_TOPIC, Board, LessonPlanner, describe_target
-from board_prompts import LANG_NAMES, build_board_greeting, build_board_prompt
+from board_prompts import (
+    LANG_NAMES,
+    build_board_greeting,
+    build_board_prompt,
+    build_resume_greeting,
+)
 from locale_map import LocaleProfile
 from media import MediaMaker
 from research import Researcher
@@ -163,6 +169,9 @@ class Classroom:
         self._research_n = 0
         self.student: str | None = None
         self.active = "nova"
+        # Continuing a previous chat: the browser sends its history and board.
+        self.resumed = asyncio.Event()
+        self.resume_transcript = ""
         self.lang = "en"
         self.stats: dict[str, int] = {
             "concepts_taught": 0,
@@ -914,6 +923,13 @@ class MarkRelay:
             logger.warning("unreadable board message")
             return
         kind = msg.get("type")
+        if kind == "resume":
+            if msg.get("book"):
+                self.cls.board.restore(msg["book"])
+            self.cls.resume_transcript = str(msg.get("transcript") or "")[-6000:]
+            self.cls.resumed.set()
+            logger.info("chat resumed", extra={"pages": len(self.cls.board.pages)})
+            return
         if kind == "language":
             code = str(msg.get("lang", "en"))
             if code != self.cls.lang and code in LANG_NAMES:
@@ -1133,10 +1149,27 @@ async def run_board_session(
         ),
     )
     await ctx.connect()
+    student = None
     try:
         student = await asyncio.wait_for(ctx.wait_for_participant(), timeout=10)
         lang = student.attributes.get("language", "en")
         cls.lang = lang if lang in LANG_NAMES else "en"
     except TimeoutError:
         pass
-    await session.generate_reply(instructions=build_board_greeting(profile, cls.lang))
+    resuming = False
+    if student is not None:
+        resuming = student.attributes.get("resume") == "1"
+    if resuming:
+        # Wait for the browser to hand over the old conversation and board.
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(cls.resumed.wait(), timeout=12)
+    if resuming and cls.resume_transcript:
+        await session.generate_reply(
+            instructions=build_resume_greeting(
+                cls.lang, cls.resume_transcript, cls.board.inventory()
+            )
+        )
+    else:
+        await session.generate_reply(
+            instructions=build_board_greeting(profile, cls.lang)
+        )

@@ -59,6 +59,7 @@ const en = {
   history: 'Previous chats',
   newChat: 'New chat',
   back: 'Back',
+  home: 'Home',
   clearHistory: 'Clear',
 };
 export type Strings = typeof en;
@@ -97,6 +98,7 @@ const te: Strings = {
   retry: 'మళ్ళీ try చెయ్యి',
   newChat: 'కొత్త chat',
   back: 'వెనక్కి',
+  home: 'హోమ్',
   history: 'పాత chats',
 };
 
@@ -131,6 +133,7 @@ const hi: Strings = {
   retry: 'फिर कोशिश करें',
   newChat: 'नई चैट',
   back: 'वापस',
+  home: 'होम',
   history: 'पिछली चैट',
 };
 

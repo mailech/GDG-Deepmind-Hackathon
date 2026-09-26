@@ -289,3 +289,15 @@ def build_board_greeting(profile: LocaleProfile, lang: str = "en") -> str:
         f"Acharya and ask what we are learning on the board today. Do not list topics. "
         f"Do not offer help."
     )
+
+
+def build_resume_greeting(lang: str, transcript: str, board: str) -> str:
+    name = LANG_NAMES.get(lang, "English")
+    return (
+        f"The student has just reopened an earlier class with you, to continue it. "
+        f"Here is how that class went:\n{transcript}\n\n"
+        f"The board is exactly as you left it:\n{board}\n\n"
+        f"Speak first, in {name}: welcome them back warmly in one short sentence, "
+        f"say in a few words what you were in the middle of, and ask whether to pick "
+        f"up from there or go somewhere new. Do not repeat the earlier explanation."
+    )
