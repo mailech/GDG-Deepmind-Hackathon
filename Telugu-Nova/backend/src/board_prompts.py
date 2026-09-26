@@ -295,7 +295,9 @@ def build_board_greeting(profile: LocaleProfile, lang: str = "en") -> str:
     )
 
 
-def build_resume_greeting(lang: str, transcript: str, board: str) -> str:
+def build_resume_greeting(
+    lang: str, transcript: str, board: str, blank: bool = False
+) -> str:
     name = LANG_NAMES.get(lang, "English")
     return (
         f"The student has just reopened an earlier class with you, to continue it. "
@@ -304,4 +306,11 @@ def build_resume_greeting(lang: str, transcript: str, board: str) -> str:
         f"Speak first, in {name}: welcome them back warmly in one short sentence, "
         f"say in a few words what you were in the middle of, and ask whether to pick "
         f"up from there or go somewhere new. Do not repeat the earlier explanation."
+        + (
+            " The old board was not saved. A fresh diagram and picture of that topic "
+            "are being drawn for you automatically — just say you are putting it back "
+            "on the board. Do NOT call any drawing, image or lesson tool yourself now."
+            if blank
+            else ""
+        )
     )

@@ -1164,11 +1164,22 @@ async def run_board_session(
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(cls.resumed.wait(), timeout=12)
     if resuming and cls.resume_transcript:
+        blank = not any(p.elements for p in cls.board.pages)
         await session.generate_reply(
             instructions=build_resume_greeting(
-                cls.lang, cls.resume_transcript, cls.board.inventory()
+                cls.lang, cls.resume_transcript, cls.board.inventory(), blank
             )
         )
+        if blank:
+            # A chat from before boards were saved: redraw the last idea so the
+            # student does not come back to an empty board.
+            asked = [
+                ln.split(":", 1)[1].strip()
+                for ln in cls.resume_transcript.splitlines()
+                if ln.startswith("Student:") and len(ln.split()) >= 4
+            ]
+            if asked:
+                _spawn(direct(asked[-1]))
     else:
         await session.generate_reply(
             instructions=build_board_greeting(profile, cls.lang)

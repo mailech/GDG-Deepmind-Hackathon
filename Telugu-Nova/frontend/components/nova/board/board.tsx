@@ -278,8 +278,13 @@ export function Board({
   const restoredRef = useRef(!restore);
   useEffect(() => {
     if (replay || !chatId || !restoredRef.current) return;
-    const t = setTimeout(() => void saveBoard(chatId, { book, research }), 600);
-    return () => clearTimeout(t);
+    const snapshot = { book, research };
+    const t = setTimeout(() => void saveBoard(chatId, snapshot), 600);
+    return () => {
+      clearTimeout(t);
+      // Also on unmount: ending the class must not drop the last change.
+      void saveBoard(chatId, snapshot);
+    };
   }, [book, research, chatId, replay]);
   useEffect(() => {
     if (!(replay || restore) || !chatId) return;
