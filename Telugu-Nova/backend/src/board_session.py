@@ -21,6 +21,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 
@@ -559,7 +560,7 @@ class BoardTeacher(Agent):
             {
                 "id": el_id,
                 "kind": "media",
-                "media": kind,
+                "media": "video" if kind == "video" else "image",
                 "caption": caption[:80],
                 "label": caption[:80],
             }
@@ -568,12 +569,19 @@ class BoardTeacher(Agent):
 
         async def work() -> None:
             try:
-                data, mime = await (
-                    media.image(description)
-                    if kind == "image"
-                    else media.video(description)
-                )
-                await media.send(el_id, data, mime)
+                source = ""
+                if kind == "photo":
+                    data, mime, source = await media.photo(description)
+                elif kind == "image":
+                    try:
+                        data, mime = await media.image(description)
+                    except Exception:
+                        # Image models refuse real people and famous places; a
+                        # real photo of the caption is the next best thing.
+                        data, mime, source = await media.photo(caption)
+                else:
+                    data, mime = await media.video(description)
+                await media.send(el_id, data, mime, source)
                 cls.notify(
                     f"[BOARD] The {kind} '{caption}' ({el_id}) is now visible on the student's "
                     f"board. You may refer to it now."
@@ -608,6 +616,20 @@ class BoardTeacher(Agent):
         """
         el_id = await self._make_media("image", description, caption)
         return f"The image '{caption}' ({el_id}) is being generated and will appear on the board in a few seconds. Keep explaining; refer to it once it is there."
+
+    @function_tool
+    async def show_photo(self, context: RunContext, query: str, caption: str) -> str:
+        """Put a REAL photo on the board, from Wikipedia: a real person,
+        place, landmark, building, historical event, artwork, organism or
+        product. Use this instead of show_image for anything real and named —
+        never generate a picture of a real person.
+
+        Args:
+            query: What to look up, e.g. "Narendra Modi", "Charminar", "Taj Mahal".
+            caption: Short caption, e.g. "Prime Minister Narendra Modi".
+        """
+        el_id = await self._make_media("photo", query, caption)
+        return f"A real photo for '{query}' ({el_id}) is being fetched and will appear in a few seconds. Keep talking."
 
     @function_tool
     async def mark_on_image(
@@ -1045,11 +1067,19 @@ async def run_board_session(
                 "director diagram",
                 extra={"layout": diagram["layout"], "q": question[:80]},
             )
-        if plan.get("image_prompt") and not drew_image:
+        if plan.get("image_prompt") and not drew_image and cls.director.image_allowed():
+            cls.director.used_image()
             await teacher_now._make_media(
                 "image",
                 plan["image_prompt"],
                 plan.get("image_caption") or "Illustration",
+            )
+        if plan.get("photo_query") and not drew_image and cls.director.image_allowed():
+            cls.director.used_image()
+            await teacher_now._make_media(
+                "photo",
+                plan["photo_query"],
+                plan.get("photo_caption") or plan["photo_query"],
             )
         if plan.get("video_prompt") and not drew_video and cls.director.video_allowed():
             cls.director.used_video()
@@ -1064,7 +1094,13 @@ async def run_board_session(
         # The student's turn just ended: direct the visuals for what they asked.
         if ev.new_state in ("thinking", "speaking"):
             q = heard["text"].strip()
-            if len(q) > 8 and q != heard["done"]:
+            # "okay", "continue", "next step" carry no new idea to draw; any
+            # question of three words or more ("Narendra Modi evaru") does.
+            filler = re.fullmatch(
+                r"(ok(ay)?|continue|go on|next( step)?|yes|no|hmm+|sare|avunu|haan|theek hai)[\s.,!?]*",
+                q.lower(),
+            )
+            if len(q.split()) >= 3 and not filler and q != heard["done"]:
                 heard["done"] = q
                 _spawn(direct(q))
 

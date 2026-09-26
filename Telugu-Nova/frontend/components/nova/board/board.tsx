@@ -233,13 +233,16 @@ type Mark = {
 };
 
 const GROUP_MS = 850; // strokes closer together than this are one mark
+const AUTO_ASK_S = 2; // seconds before a circle asks on its own
 
 // ---------------------------------------------------------------------------
 
 export function Board({ fallback }: { fallback?: React.ReactNode }) {
   const [book, dispatch] = useReducer(reduceBook, FIRST_BOOK);
   const [research, dispatchResearch] = useReducer(reduceResearch, []);
-  const [media, setMedia] = useState<Record<string, { url: string; mime: string } | 'failed'>>({});
+  const [media, setMedia] = useState<
+    Record<string, { url: string; mime: string; source?: string } | 'failed'>
+  >({});
   const state = book.pages[book.active] ?? EMPTY;
   const session = useSessionContext();
   const room = session.room;
@@ -288,7 +291,8 @@ export function Board({ fallback }: { fallback?: React.ReactNode }) {
         const mime = reader.info.mimeType || 'image/jpeg';
         const url = URL.createObjectURL(new Blob(chunks as BlobPart[], { type: mime }));
         const id = reader.info.attributes?.id ?? reader.info.id;
-        setMedia((m) => ({ ...m, [id]: { url, mime } }));
+        const source = reader.info.attributes?.source || undefined;
+        setMedia((m) => ({ ...m, [id]: { url, mime, source } }));
       });
     } catch {
       /* already registered by a previous mount */
@@ -312,7 +316,9 @@ export function Board({ fallback }: { fallback?: React.ReactNode }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const columns = viewW < 760 ? 1 : 2;
+  // One wide column, so diagrams and pictures use the whole board; a second
+  // column only on very wide screens.
+  const columns = viewW >= 1700 ? 2 : 1;
 
   const layout: BoardLayout = useMemo(
     () => layoutBoard(state.steps, state.revealed, columns),
@@ -808,6 +814,20 @@ function MarkChip({
   onDismiss: () => void;
 }) {
   const t = useT();
+  // Circling IS asking: after a short countdown the question goes by itself.
+  // The student can ask straight away, or cancel with the cross.
+  const [left_s, setLeftS] = useState(AUTO_ASK_S);
+  const askRef = useRef(onAsk);
+  askRef.current = onAsk;
+  useEffect(() => {
+    if (mark.status !== 'open') return;
+    if (left_s <= 0) {
+      askRef.current();
+      return;
+    }
+    const id = setTimeout(() => setLeftS((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [left_s, mark.status]);
   const left = Math.min((mark.box.x + mark.box.w) * scale + 10, maxX - 250);
   const top = Math.max(4, mark.box.y * scale - 8);
   const what = mark.targets
@@ -849,6 +869,7 @@ function MarkChip({
               style={{ background: INK.teacher }}
             >
               {t.dontGet}
+              {left_s > 0 ? ` (${left_s})` : ''}
             </button>
             <button
               onClick={onDismiss}

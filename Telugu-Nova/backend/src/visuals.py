@@ -91,7 +91,10 @@ DIRECTOR_SCHEMA = _S(
     properties={
         "skip": _S(
             type="BOOLEAN",
-            description="True ONLY for greetings, thanks, yes/no, or small talk with nothing to show.",
+            description=(
+                "True for greetings, thanks, yes/no, small talk, and continuations like "
+                "'okay continue', 'next', 'go on' — nothing new to show."
+            ),
         ),
         "diagram": DIAGRAM_SCHEMA,
         "image_prompt": _S(
@@ -99,6 +102,15 @@ DIRECTOR_SCHEMA = _S(
             description="Empty unless a real illustration helps (anatomy, geography, devices, scenes, labelled real objects). Otherwise a precise prompt for an educational infographic.",
         ),
         "image_caption": _STR,
+        "photo_query": _S(
+            type="STRING",
+            description=(
+                "For a REAL named person, place, landmark, building, event, artwork or "
+                "organisation: a Wikipedia search for its real photo, e.g. 'Narendra Modi'. "
+                "Use this INSTEAD of image_prompt for real, named things."
+            ),
+        ),
+        "photo_caption": _STR,
         "video_prompt": _S(
             type="STRING",
             description="Empty unless MOTION is the essence (a process over time, a physical phenomenon, a mechanism moving). A precise prompt for an 8-second educational animation.",
@@ -131,6 +143,9 @@ Design the visuals for THIS question. Rules:
   related nodes. Use notes for the one number or fact that matters.
 - Edges carry short labels only where they add meaning. Every edge must use
   node ids that exist. No duplicate nodes. Nothing already on the board.
+- photo_query: for real, named people, places, landmarks and events, fetch
+  the REAL photo instead of generating one. Never put a real person in
+  image_prompt.
 - image_prompt: fill it whenever a picture of the real thing would help a
   student remember it — most science, medicine, geography, engineering and
   real-world topics. Leave it empty for abstract or purely numeric topics.
@@ -148,12 +163,21 @@ class VisualDirector:
             ),
         )
         self._last_video = 0.0
+        self._last_image = 0.0
 
     def video_allowed(self) -> bool:
         return time.monotonic() - self._last_video > 150  # clips are slow and costly
 
     def used_video(self) -> None:
         self._last_video = time.monotonic()
+
+    def image_allowed(self) -> bool:
+        return (
+            time.monotonic() - self._last_image > 40
+        )  # one picture per idea, not per sentence
+
+    def used_image(self) -> None:
+        self._last_image = time.monotonic()
 
     async def direct(self, question: str, board: str) -> dict | None:
         rule = (

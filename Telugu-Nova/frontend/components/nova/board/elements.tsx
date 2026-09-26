@@ -417,9 +417,9 @@ function TableEl({ pe }: { pe: PlacedEl }) {
 // ---------------------------------------------------------------------------
 
 /** Generated media bytes by element id: a blob URL, or 'failed'. */
-export const MediaContext = createContext<Record<string, { url: string; mime: string } | 'failed'>>(
-  {}
-);
+export const MediaContext = createContext<
+  Record<string, { url: string; mime: string; source?: string } | 'failed'>
+>({});
 
 function edgePoint(r: { x: number; y: number; w: number; h: number }, tx: number, ty: number) {
   const cx = r.x + r.w / 2;
@@ -760,16 +760,16 @@ function MediaEl({ pe }: { pe: PlacedEl }) {
       {ready && (
         <g data-snapshot-skip>
           <rect
-            x={g.mediaW - 196}
+            x={g.mediaW - 246}
             y={top + g.mediaH - 30}
-            width={188}
+            width={238}
             height={22}
             rx={11}
             fill="#FFFFFF"
             opacity={0.9}
           />
           <text
-            x={g.mediaW - 102}
+            x={g.mediaW - 127}
             y={top + g.mediaH - 15}
             textAnchor="middle"
             fontFamily={MONO}
@@ -777,7 +777,11 @@ function MediaEl({ pe }: { pe: PlacedEl }) {
             fontSize={11}
             fill={INK.teacher}
           >
-            {el.media === 'video' ? 'AI-generated · Veo' : 'AI-generated · Nano Banana'}
+            {ready.source
+              ? ready.source.slice(0, 34)
+              : el.media === 'video'
+                ? 'AI-generated · Veo'
+                : 'AI-generated · Nano Banana'}
           </text>
         </g>
       )}

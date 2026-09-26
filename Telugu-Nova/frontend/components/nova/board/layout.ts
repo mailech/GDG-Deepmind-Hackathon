@@ -310,8 +310,9 @@ function sizeEl(el: El, colW: number): Sized {
       return sizeList(el.items, el.label, colW);
     case 'media': {
       const labelH = el.caption ? LABEL_H + 4 : 0;
-      const w = el.media === 'video' ? colW : Math.min(colW, 420);
-      const h = el.media === 'video' ? (w * 9) / 16 : w;
+      // Images are generated 16:9 like clips, so both fill the column exactly.
+      const w = colW;
+      const h = (w * 9) / 16;
       return { w, h: h + labelH, parts: {}, geom: { labelH, mediaW: w, mediaH: h } };
     }
   }
@@ -510,7 +511,7 @@ function sizeDiagram(el: Extract<El, { kind: 'diagram' }>, colW: number): Sized 
 export function layoutBoard(steps: Step[], revealed: number, columns: number): BoardLayout {
   const margin = 36;
   const gutter = 56;
-  const width = columns === 1 ? 640 : 1240;
+  const width = columns === 1 ? 1000 : 1240;
   const colW = (width - margin * 2 - gutter * (columns - 1)) / columns;
   const colH = Array.from({ length: columns }, () => margin);
   const placedSteps: PlacedStep[] = [];

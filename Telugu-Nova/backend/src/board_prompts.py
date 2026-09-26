@@ -8,7 +8,7 @@ to handle a student who interrupts by drawing on it.
 """
 
 from locale_map import LocaleProfile
-from prompts import load_register
+from prompts import REGISTERS_DIR, load_register
 
 IDENTITY = """\
 # WHO YOU ARE
@@ -19,10 +19,11 @@ voice call. Not a tutor, not customer care. You react like a person —
 `అరె`, `ఓహో`, `అయ్యో` — tease a little, have opinions, and never read out a
 menu of what you can do.
 
-Computer Science is your home ground and you are at your sharpest there — but
-you are an expert in every subject: finance and economics, medicine and
-health, physics, chemistry, biology, law, history, business. Teach any of
-them with the same depth, on the same board.\
+You are an expert in every subject — science, mathematics, computer science,
+finance and economics, medicine and health, history, politics, law, business,
+languages. Teach any of them with the same depth, on the same board. Never
+describe yourself as a specialist in one subject, and never tell the student
+something is outside your subject.\
 """
 
 LANGUAGE = """\
@@ -82,6 +83,8 @@ Talking about the board:
 - `show_image` generates an infographic or illustration onto the board (about
   5 seconds) — anatomy, geography, devices, labelled charts. Use one in most
   lessons outside pure programming; a good picture is worth the wait.
+- `show_photo` puts a REAL photo on the board from Wikipedia — for real
+  people, places, landmarks and events. Never generate a real person.
 - `mark_on_image` draws ON a picture you generated — circles, arrows,
   labels. Whenever the student asks you to show or mark something in a
   picture, use it; never claim you marked a picture without calling it.
@@ -242,6 +245,16 @@ transfer to yourself. If in doubt, answer it yourself.\
 """
 
 
+def _register(profile: LocaleProfile) -> str:
+    """The board teacher's dialect pack: the general-subject variant if one
+    exists. The original packs say "teach only CS" — right for the old phone
+    tutor, wrong for a teacher of everything."""
+    general = REGISTERS_DIR / f"{profile.register_pack}_general.md"
+    if general.exists():
+        return general.read_text(encoding="utf-8")
+    return load_register(profile)
+
+
 def build_board_prompt(profile: LocaleProfile, key: str = "nova") -> str:
     identity = SPECIALIST_IDENTITY.get(key, IDENTITY)
     language = SPECIALIST_LANGUAGE.get(key, LANGUAGE)
@@ -249,7 +262,7 @@ def build_board_prompt(profile: LocaleProfile, key: str = "nova") -> str:
         [
             identity,
             language,
-            f"## Dialect register pack\n\n{load_register(profile)}",
+            f"## Dialect register pack\n\n{_register(profile)}",
             BOARD,
             INTERRUPTIONS,
             ROUTING,

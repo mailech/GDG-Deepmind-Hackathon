@@ -17,7 +17,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from urllib.parse import quote
 
+import httpx
 from google import genai
 from google.genai import types
 from livekit import rtc
@@ -50,7 +52,8 @@ class MediaMaker:
                         model=model,
                         contents=IMAGE_STYLE + prompt,
                         config=types.GenerateContentConfig(
-                            response_modalities=["IMAGE"]
+                            response_modalities=["IMAGE"],
+                            image_config=types.ImageConfig(aspect_ratio="16:9"),
                         ),
                     ),
                     timeout=40,
@@ -117,14 +120,59 @@ class MediaMaker:
         data = vid.video_bytes or await self._client.aio.files.download(file=vid)
         return data, vid.mime_type or "video/mp4"
 
-    async def send(self, media_id: str, data: bytes, mime: str) -> None:
+    async def photo(self, query: str) -> tuple[bytes, str, str]:
+        """A REAL photo of a named person, place, landmark or event, from
+        Wikipedia. Image models refuse real people (and should not invent
+        them), and a real photo is the honest picture of a real thing."""
+        # Wikimedia policy: identify the app with a contact URL, or get a 403.
+        headers = {
+            "User-Agent": "AgentAcharya/1.0 (https://github.com/mailech/GDG-Deepmind-Hackathon)"
+        }
+        async with httpx.AsyncClient(
+            headers=headers, timeout=12, follow_redirects=True
+        ) as http:
+            r = await http.get(
+                "https://en.wikipedia.org/w/rest.php/v1/search/page",
+                params={"q": query, "limit": 3},
+            )
+            r.raise_for_status()
+            for page in r.json().get("pages", []):
+                s = await http.get(
+                    "https://en.wikipedia.org/api/rest_v1/page/summary/"
+                    + quote(page["key"], safe="")
+                )
+                if s.status_code != 200:
+                    continue
+                info = s.json()
+                img = info.get("originalimage") or info.get("thumbnail")
+                if not img or img["source"].lower().endswith(".svg"):
+                    continue
+                src = img["source"]
+                if img.get("width", 0) > 1600 and info.get("thumbnail"):
+                    # Wikimedia thumbnails can be requested at any width.
+                    src = info["thumbnail"]["source"].replace(
+                        f"/{info['thumbnail']['width']}px-", "/1280px-"
+                    )
+                pic = await http.get(src)
+                pic.raise_for_status()
+                mime = pic.headers.get("content-type", "image/jpeg").split(";")[0]
+                return (
+                    pic.content,
+                    mime,
+                    f"Photo · Wikipedia: {info.get('title', page['key'])}",
+                )
+        raise RuntimeError(f"no Wikipedia photo for {query!r}")
+
+    async def send(
+        self, media_id: str, data: bytes, mime: str, source: str = ""
+    ) -> None:
         if mime.startswith("image"):
             self.store[media_id] = (data, mime)
         writer = await self._room.local_participant.stream_bytes(
             f"{media_id}.{'mp4' if mime.startswith('video') else 'jpg'}",
             total_size=len(data),
             mime_type=mime,
-            attributes={"id": media_id},
+            attributes={"id": media_id, "source": source},
             topic=MEDIA_TOPIC,
         )
         chunk = 64 * 1024
