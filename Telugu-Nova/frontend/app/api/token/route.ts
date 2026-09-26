@@ -91,7 +91,8 @@ function createParticipantToken(
 ): Promise<string> {
   const at = new AccessToken(API_KEY, API_SECRET, {
     ...userInfo,
-    ttl: '15m',
+    // Long enough for a full class plus reconnects; 15 minutes cut classes off.
+    ttl: '3h',
   });
   const grant: VideoGrant = {
     room: roomName,

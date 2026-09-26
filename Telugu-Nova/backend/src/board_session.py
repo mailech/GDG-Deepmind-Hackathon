@@ -1000,6 +1000,11 @@ def build_live_model(voice: str = LIVE_VOICE) -> google.realtime.RealtimeModel:
         temperature=0.4,
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig(),
+        # A Live session otherwise ends at its context limit (~15 min of audio):
+        # the class would just stop mid-lesson. A sliding window keeps it going.
+        context_window_compression=types.ContextWindowCompressionConfig(
+            sliding_window=types.SlidingWindow()
+        ),
         **kwargs,
     )
 
