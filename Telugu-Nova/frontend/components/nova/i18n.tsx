@@ -56,7 +56,8 @@ const en = {
   retry: 'Try again',
   earlier: 'Earlier classes',
   thisClass: 'This class',
-  history: 'Chat history',
+  history: 'Previous chats',
+  newChat: 'New chat',
   clearHistory: 'Clear',
 };
 export type Strings = typeof en;
@@ -93,6 +94,8 @@ const te: Strings = {
   researching: 'వెతుకుతున్నా…',
   generating: 'తయారు చేస్తున్నా…',
   retry: 'మళ్ళీ try చెయ్యి',
+  newChat: 'కొత్త chat',
+  history: 'పాత chats',
 };
 
 const hi: Strings = {
@@ -124,6 +127,8 @@ const hi: Strings = {
   researching: 'खोज रहा है…',
   generating: 'बना रहा है…',
   retry: 'फिर कोशिश करें',
+  newChat: 'नई चैट',
+  history: 'पिछली चैट',
 };
 
 const ta: Strings = {

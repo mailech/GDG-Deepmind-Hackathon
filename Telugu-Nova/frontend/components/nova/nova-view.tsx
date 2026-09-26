@@ -257,6 +257,7 @@ function ReadyScreen({ onStart }: { onStart: () => void }) {
       <p className="mt-4 text-[12px]" style={{ color: C.inkSoft }}>
         {t.micNote}
       </p>
+      <ChatHistory />
     </Shell>
   );
 }
@@ -304,23 +305,111 @@ type Line = { id: string; mine: boolean; text: string; at: number };
 // ---------------------------------------------------------------------------
 
 type Saved = Line & { who: string };
-const HISTORY_KEY = 'aa_chat_history';
+type Chat = { id: string; at: number; lines: Saved[] };
+const CHATS_KEY = 'aa_chats';
+const OLD_HISTORY_KEY = 'aa_chat_history'; // flat log from before chats existed
 
-function loadHistory(): Saved[] {
+function loadChats(): Chat[] {
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    return raw ? (JSON.parse(raw) as Saved[]) : [];
+    const chats = JSON.parse(localStorage.getItem(CHATS_KEY) ?? '[]') as Chat[];
+    const old = localStorage.getItem(OLD_HISTORY_KEY);
+    if (old) {
+      const lines = JSON.parse(old) as Saved[];
+      if (lines.length) chats.push({ id: 'earlier', at: lines[0].at || 0, lines });
+      localStorage.removeItem(OLD_HISTORY_KEY);
+      localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+    }
+    return chats.sort((x, y) => y.at - x.at);
   } catch {
     return [];
   }
 }
 
-function saveHistory(items: Saved[]) {
+function saveChat(chat: Chat) {
   try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(-400)));
+    const rest = loadChats().filter((c) => c.id !== chat.id);
+    localStorage.setItem(CHATS_KEY, JSON.stringify([chat, ...rest].slice(0, 30)));
   } catch {
     /* storage full or blocked: history is a convenience, not a requirement */
   }
+}
+
+function clearChats() {
+  try {
+    localStorage.removeItem(CHATS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Previous chats, newest first; click one to read it. */
+function ChatHistory() {
+  const t = useT();
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => setChats(loadChats()), []);
+  if (!chats.length) return null;
+  return (
+    <div className="mt-7 w-full">
+      <div className="mb-2 flex items-center justify-between">
+        <p
+          className="font-mono text-[10px] tracking-[0.18em] uppercase"
+          style={{ color: C.inkSoft }}
+        >
+          {t.history}
+        </p>
+        <button
+          onClick={() => {
+            clearChats();
+            setChats([]);
+          }}
+          className="text-[12px] underline"
+          style={{ color: C.inkSoft }}
+        >
+          {t.clearHistory}
+        </button>
+      </div>
+      <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+        {chats.map((c) => {
+          const first = c.lines.find((l) => l.mine)?.text || c.lines[0]?.text || '…';
+          const isOpen = open === c.id;
+          return (
+            <div
+              key={c.id}
+              className="rounded-2xl"
+              style={{ background: C.paper, border: `1px solid ${C.line}` }}
+            >
+              <button
+                onClick={() => setOpen(isOpen ? null : c.id)}
+                className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left"
+              >
+                <span
+                  className="min-w-0 flex-1 truncate text-[14px] font-semibold"
+                  style={{ color: C.ink }}
+                >
+                  {first}
+                </span>
+                <span className="shrink-0 font-mono text-[10px]" style={{ color: C.inkSoft }}>
+                  {c.at
+                    ? new Date(c.at).toLocaleDateString([], { day: 'numeric', month: 'short' })
+                    : ''}
+                  {' · '}
+                  {c.lines.length}
+                </span>
+              </button>
+              {isOpen && (
+                <div className="flex flex-col gap-2.5 px-3 pb-3">
+                  {c.lines.map((l) => (
+                    <HistoryLine key={`${c.id}-${l.id}-${l.at}`} line={l} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function HistoryLine({ line, dim }: { line: Saved; dim?: boolean }) {
@@ -370,11 +459,15 @@ const STATUS: Record<
 };
 
 function LiveScreen({
+  chatId,
+  onNewChat,
   onEnd,
   canvas,
   agent: who,
   handoffs,
 }: {
+  chatId: string;
+  onNewChat: () => void;
   onEnd: () => void;
   canvas: CanvasPayload[];
   agent: { id: string; name: string; role: string; tint: string; lang: string };
@@ -413,12 +506,15 @@ function LiveScreen({
       .filter((l) => l.text?.trim())
       .sort((a, b) => a.at - b.at)
   );
-  // Earlier classes, loaded once; this class is appended as it happens.
-  const [earlier] = useState<Saved[]>(() => loadHistory());
+  // This class is its own chat, saved as it happens.
   useEffect(() => {
     if (!lines.length) return;
-    saveHistory([...earlier, ...lines.map((l) => ({ ...l, who: l.mine ? tr.you : who.name }))]);
-  }, [lines, earlier, tr.you, who.name]);
+    saveChat({
+      id: chatId,
+      at: lines[0].at || Date.now(),
+      lines: lines.map((l) => ({ ...l, who: l.mine ? tr.you : who.name })),
+    });
+  }, [lines, chatId, tr.you, who.name]);
 
   const { toggle: toggleMic, enabled: micOn } = useTrackToggle({
     source: Track.Source.Microphone,
@@ -531,25 +627,6 @@ function LiveScreen({
           className="mt-4 min-h-0 flex-1 overflow-y-auto rounded-2xl p-3.5"
           style={{ background: t.paper, border: `1px solid ${t.edge}` }}
         >
-          {earlier.length > 0 && (
-            <div className="mb-3 flex flex-col gap-2.5">
-              <p
-                className="text-center font-mono text-[10px] tracking-[0.18em] uppercase"
-                style={{ color: C.inkSoft }}
-              >
-                {tr.earlier}
-              </p>
-              {earlier.slice(-60).map((l) => (
-                <HistoryLine key={`h-${l.id}-${l.at}`} line={l} dim />
-              ))}
-              <p
-                className="mt-1 text-center font-mono text-[10px] tracking-[0.18em] uppercase"
-                style={{ color: C.inkSoft }}
-              >
-                {tr.thisClass}
-              </p>
-            </div>
-          )}
           {feed.length === 0 ? (
             <p className="pt-10 text-center text-[13px]" style={{ color: C.inkSoft }}>
               {tr.transcriptEmpty}
@@ -592,6 +669,13 @@ function LiveScreen({
             {micOn ? tr.micOff : tr.micOn}
           </button>
           <button
+            onClick={onNewChat}
+            className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold transition hover:brightness-[0.98]"
+            style={{ background: t.paper, border: `1px solid ${t.edge}`, color: C.ink }}
+          >
+            {tr.newChat}
+          </button>
+          <button
             onClick={onEnd}
             className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold text-white transition hover:brightness-[1.06]"
             style={{ background: C.rose }}
@@ -616,8 +700,6 @@ function LiveScreen({
 
 function EndedScreen({ turns, onRestart }: { turns: number; onRestart: () => void }) {
   const t = useT();
-  const [history, setHistory] = useState<Saved[]>([]);
-  useEffect(() => setHistory(loadHistory()), []);
   return (
     <Shell>
       <Mark tint={C.sage} />
@@ -627,43 +709,8 @@ function EndedScreen({ turns, onRestart }: { turns: number; onRestart: () => voi
       <p className="mt-2 mb-8 text-center text-[15px]" style={{ color: C.inkSoft }}>
         {turns > 0 ? t.endedTurns(turns) : t.endedNone}
       </p>
-      <PrimaryButton onClick={onRestart}>{t.again}</PrimaryButton>
-      {history.length > 0 && (
-        <div className="mt-6 w-full">
-          <div className="mb-2 flex items-center justify-between">
-            <p
-              className="font-mono text-[10px] tracking-[0.18em] uppercase"
-              style={{ color: C.inkSoft }}
-            >
-              {t.history}
-            </p>
-            <button
-              onClick={() => {
-                saveHistory([]);
-                setHistory([]);
-              }}
-              className="text-[12px] underline"
-              style={{ color: C.inkSoft }}
-            >
-              {t.clearHistory}
-            </button>
-          </div>
-          <div
-            className="flex max-h-72 flex-col gap-2.5 overflow-y-auto rounded-2xl p-3"
-            style={{ background: C.paper, border: `1px solid ${C.line}` }}
-          >
-            {history.slice(-80).map((l) => (
-              <HistoryLine key={`e-${l.id}-${l.at}`} line={l} />
-            ))}
-          </div>
-        </div>
-      )}
-      <p
-        className="mt-6 font-mono text-[10px] tracking-[0.22em] uppercase"
-        style={{ color: C.inkSoft }}
-      >
-        call ended
-      </p>
+      <PrimaryButton onClick={onRestart}>{t.newChat}</PrimaryButton>
+      <ChatHistory />
     </Shell>
   );
 }
@@ -820,6 +867,9 @@ function NovaViewInner() {
     lang: string;
   }>({ id: 'nova', name: 'Acharya', role: 'Teacher', tint: C.clay, lang: 'English' });
   const wasConnected = useRef(false);
+  const [chatId, setChatId] = useState(() => `c${Date.now()}`);
+  // "New chat" mid-class: end this session, then go straight into a fresh one.
+  const restarting = useRef(false);
 
   // The agent pushes code and flowcharts here over the data channel while it
   // talks. Anything unparseable is dropped rather than crashing the view.
@@ -865,7 +915,12 @@ function NovaViewInner() {
       setTurns(messages.length);
     } else if (wasConnected.current) {
       wasConnected.current = false;
-      setHasEnded(true);
+      if (restarting.current) {
+        restarting.current = false;
+        void handleStartRef.current();
+      } else {
+        setHasEnded(true);
+      }
     }
   }, [isConnected, messages.length]);
 
@@ -877,6 +932,7 @@ function NovaViewInner() {
       return;
     }
     setHasEnded(false);
+    setChatId(`c${Date.now()}`);
     setCanvas([]);
     setHandoffs([]);
     setAgentId({
@@ -889,7 +945,15 @@ function NovaViewInner() {
     await start();
   }, [start]);
 
+  const handleStartRef = useRef(handleStart);
+  handleStartRef.current = handleStart;
+
   const handleEnd = useCallback(async () => {
+    await end();
+  }, [end]);
+
+  const handleNewChat = useCallback(async () => {
+    restarting.current = true;
     await end();
   }, [end]);
 
@@ -905,7 +969,14 @@ function NovaViewInner() {
         {screen === 'ready' && <ReadyScreen onStart={handleStart} />}
         {screen === 'connecting' && <ConnectingScreen />}
         {screen === 'live' && (
-          <LiveScreen onEnd={handleEnd} canvas={canvas} agent={agentId} handoffs={handoffs} />
+          <LiveScreen
+            chatId={chatId}
+            onNewChat={handleNewChat}
+            onEnd={handleEnd}
+            canvas={canvas}
+            agent={agentId}
+            handoffs={handoffs}
+          />
         )}
         {screen === 'ended' && <EndedScreen turns={turns} onRestart={handleStart} />}
         {screen === 'mic-error' && <MicErrorScreen kind={micError!} onRetry={handleStart} />}
