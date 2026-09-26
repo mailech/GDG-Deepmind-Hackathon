@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // No Next.js badge in the corner during development.
+  devIndicators: false,
   eslint: {
     // These warnings come from upstream LiveKit/AI UI components, not our code.
     ignoreDuringBuilds: true,

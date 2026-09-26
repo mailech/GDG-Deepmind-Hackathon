@@ -12,6 +12,7 @@ import {
   useTrackToggle,
   useTrackTranscription,
 } from '@livekit/components-react';
+import { HouseIcon, MicrophoneIcon, MicrophoneSlashIcon, PlusIcon } from '@phosphor-icons/react';
 import { clearArchive, loadBoard } from '@/components/nova/board/archive';
 import { Board } from '@/components/nova/board/board';
 import { Canvas, type CanvasPayload } from '@/components/nova/canvas';
@@ -451,6 +452,42 @@ const STATUS: Record<
   speaking: { key: 'speaking', en: 'agent is speaking', tint: C.sky },
 };
 
+/** Square control: icon on top, a short label underneath. */
+function ControlButton({
+  label,
+  onClick,
+  edge,
+  paper,
+  alert = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  edge: string;
+  paper: string;
+  alert?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="flex h-[60px] w-[62px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl transition hover:brightness-[0.97] active:scale-[0.97]"
+      style={{
+        background: alert ? `${C.rose}14` : paper,
+        border: `1px solid ${alert ? `${C.rose}55` : edge}`,
+        color: alert ? C.rose : C.ink,
+      }}
+    >
+      {children}
+      <span className="w-full truncate px-1 text-center text-[10.5px] leading-none font-semibold">
+        {label}
+      </span>
+    </button>
+  );
+}
+
 function LiveScreen({
   chatId,
   resume,
@@ -687,32 +724,26 @@ function LiveScreen({
           )}
         </div>
 
-        <div className="mt-4 flex w-full gap-3">
-          <button
+        <div className="mt-4 flex w-full items-stretch gap-2">
+          <ControlButton
+            label={micOn ? tr.micOff : tr.micOn}
             onClick={() => toggleMic()}
-            className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold transition hover:brightness-[0.98]"
-            style={{ background: t.paper, border: `1px solid ${t.edge}`, color: C.ink }}
+            edge={t.edge}
+            paper={t.paper}
+            alert={!micOn}
           >
-            {micOn ? tr.micOff : tr.micOn}
-          </button>
-          <button
-            onClick={onHome}
-            className="rounded-2xl px-4 py-3.5 text-[14px] font-semibold transition hover:brightness-[0.98]"
-            style={{ background: t.paper, border: `1px solid ${t.edge}`, color: C.ink }}
-          >
-            {tr.home}
-          </button>
-          <button
-            onClick={onNewChat}
-            className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold transition hover:brightness-[0.98]"
-            style={{ background: t.paper, border: `1px solid ${t.edge}`, color: C.ink }}
-          >
-            {tr.newChat}
-          </button>
+            {micOn ? <MicrophoneIcon size={20} /> : <MicrophoneSlashIcon size={20} />}
+          </ControlButton>
+          <ControlButton label={tr.home} onClick={onHome} edge={t.edge} paper={t.paper}>
+            <HouseIcon size={20} />
+          </ControlButton>
+          <ControlButton label={tr.newChat} onClick={onNewChat} edge={t.edge} paper={t.paper}>
+            <PlusIcon size={20} />
+          </ControlButton>
           <button
             onClick={onEnd}
-            className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold text-white transition hover:brightness-[1.06]"
-            style={{ background: C.rose }}
+            className="flex-1 rounded-2xl text-[14px] font-semibold text-white transition hover:brightness-[1.06] active:scale-[0.98]"
+            style={{ background: C.rose, boxShadow: `0 4px 12px ${C.rose}33` }}
           >
             {tr.endCall}
           </button>
