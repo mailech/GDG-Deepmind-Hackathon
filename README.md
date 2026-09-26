@@ -6,15 +6,15 @@ Each folder is the **complete, runnable project as it stood at the end of that d
 
 | Day | What was built |
 |---|---|
-| [Voice-Pipeline-D1](./Voice-Pipeline-D1/) | Get a voice agent speaking Telangana Telugu |
-| [Persona-Guardrails-D2](./Persona-Guardrails-D2/) | Give the agent a job and limits |
-| [Frontend-D3](./Frontend-D3/) | A frontend built for this product, not a demo shell |
-| [Memory-D4](./Memory-D4/) | Remember students between calls |
-| [Live-Tools-D5](./Live-Tools-D5/) | Fetch real data from the internet |
-| [Outbound-Calls-D6](./Outbound-Calls-D6/) | The agent calls the student |
-| [Human-Escalation-D7](./Human-Escalation-D7/) | Know when to fetch a human |
-| [Analytics-D8](./Analytics-D8/) | Measure whether calls actually worked |
-| [Agent-Handoff-D9](./Agent-Handoff-D9/) | Three specialists, and knowing when to step aside |
+| [Voice-Pipeline](./Voice-Pipeline/) | Get a voice agent speaking Telangana Telugu |
+| [Persona-Guardrails](./Persona-Guardrails/) | Give the agent a job and limits |
+| [Frontend](./Frontend/) | A frontend built for this product, not a demo shell |
+| [Memory](./Memory/) | Remember students between calls |
+| [Live-Tools](./Live-Tools/) | Fetch real data from the internet |
+| [Outbound-Calls](./Outbound-Calls/) | The agent calls the student |
+| [Human-Escalation](./Human-Escalation/) | Know when to fetch a human |
+| [Analytics](./Analytics/) | Measure whether calls actually worked |
+| [Agent-Handoff](./Agent-Handoff/) | Three specialists, and knowing when to step aside |
 
 ## Running any day
 
