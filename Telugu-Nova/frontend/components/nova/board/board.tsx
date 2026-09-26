@@ -4,10 +4,16 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { AnimatePresence, motion } from 'motion/react';
 import { useDataChannel, useSessionContext } from '@livekit/components-react';
 import { useT } from '../i18n';
+import { loadBoard, loadMedia, saveBoard, saveMedia } from './archive';
 import { BoardElement, INK, MediaContext, StepTitle } from './elements';
 import { type BoardLayout, HAND, layoutBoard, targetRect, targetText } from './layout';
 import { type Pt, bboxOf, hitTest, shapeOf, snapshotRegion } from './marks';
-import { type ResearchOp, ResearchPanel, reduceResearch } from './research-panel';
+import {
+  type ResearchItem,
+  type ResearchOp,
+  ResearchPanel,
+  reduceResearch,
+} from './research-panel';
 import { arrowHead, sketchCircle, smoothPath } from './sketch';
 import type { BoardOp, El, Rect, Step, StudentMark } from './types';
 
@@ -186,7 +192,8 @@ type Book = { pages: Record<string, State>; order: string[]; active: string };
 type BookOp =
   | (BoardOp & { board?: string })
   | { op: 'local_open'; board: string }
-  | { op: 'local_new'; board: string; title: string };
+  | { op: 'local_new'; board: string; title: string }
+  | { op: 'restore'; book: Book };
 
 const FIRST_BOOK: Book = {
   pages: { b1: { ...EMPTY, title: 'Board 1' } },
@@ -204,6 +211,7 @@ function withPage(book: Book, id: string, title?: string): Book {
 }
 
 function reduceBook(book: Book, op: BookOp): Book {
+  if (op.op === 'restore') return op.book;
   if (op.op === 'local_open') return { ...withPage(book, op.board), active: op.board };
   if (op.op === 'local_new') return { ...withPage(book, op.board, op.title), active: op.board };
   const id = op.board ?? book.active;
@@ -237,7 +245,20 @@ const AUTO_ASK_S = 2; // seconds before a circle asks on its own
 
 // ---------------------------------------------------------------------------
 
-export function Board({ fallback }: { fallback?: React.ReactNode }) {
+/**
+ * `chatId` names the archive this board is saved under. With `replay`, the
+ * board is read-only: it loads a finished class from the archive instead of
+ * listening to a live one.
+ */
+export function Board({
+  fallback,
+  chatId,
+  replay = false,
+}: {
+  fallback?: React.ReactNode;
+  chatId?: string;
+  replay?: boolean;
+}) {
   const [book, dispatch] = useReducer(reduceBook, FIRST_BOOK);
   const [research, dispatchResearch] = useReducer(reduceResearch, []);
   const [media, setMedia] = useState<
@@ -245,9 +266,41 @@ export function Board({ fallback }: { fallback?: React.ReactNode }) {
   >({});
   const state = book.pages[book.active] ?? EMPTY;
   const session = useSessionContext();
-  const room = session.room;
+  const room = replay ? undefined : session.room;
+
+  // --- archive: save the live board as it changes; load it when replaying
+  const chatRef = useRef(chatId);
+  chatRef.current = chatId;
+  useEffect(() => {
+    if (replay || !chatId) return;
+    const t = setTimeout(() => void saveBoard(chatId, { book, research }), 600);
+    return () => clearTimeout(t);
+  }, [book, research, chatId, replay]);
+  useEffect(() => {
+    if (!replay || !chatId) return;
+    let alive = true;
+    void (async () => {
+      const saved = await loadBoard<{ book: Book; research: ResearchItem[] }>(chatId);
+      const blobs = await loadMedia(chatId);
+      if (!alive) return;
+      if (saved?.book) dispatch({ op: 'restore', book: saved.book });
+      if (saved?.research) dispatchResearch({ op: 'restore', items: saved.research });
+      setMedia(
+        Object.fromEntries(
+          Object.entries(blobs).map(([id, m]) => [
+            id,
+            { url: URL.createObjectURL(m.blob), mime: m.mime, source: m.source },
+          ])
+        )
+      );
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [replay, chatId]);
 
   useDataChannel(BOARD_TOPIC, (msg) => {
+    if (replay) return;
     try {
       const op = JSON.parse(new TextDecoder().decode(msg.payload)) as BookOp | ResearchOp;
       if (op.op.startsWith('research')) dispatchResearch(op as ResearchOp);
@@ -289,10 +342,12 @@ export function Board({ fallback }: { fallback?: React.ReactNode }) {
       room.registerByteStreamHandler(topic, async (reader) => {
         const chunks = await reader.readAll();
         const mime = reader.info.mimeType || 'image/jpeg';
-        const url = URL.createObjectURL(new Blob(chunks as BlobPart[], { type: mime }));
+        const blob = new Blob(chunks as BlobPart[], { type: mime });
+        const url = URL.createObjectURL(blob);
         const id = reader.info.attributes?.id ?? reader.info.id;
         const source = reader.info.attributes?.source || undefined;
         setMedia((m) => ({ ...m, [id]: { url, mime, source } }));
+        if (chatRef.current) void saveMedia(chatRef.current, id, { blob, mime, source });
       });
     } catch {
       /* already registered by a previous mount */
@@ -396,6 +451,10 @@ export function Board({ fallback }: { fallback?: React.ReactNode }) {
   );
 
   const finishMark = useCallback(async () => {
+    if (replay) {
+      pendingStrokes.current = []; // a finished class has no teacher to ask
+      return;
+    }
     const ids = pendingStrokes.current;
     pendingStrokes.current = [];
     if (!ids.length) return;
@@ -450,7 +509,7 @@ export function Board({ fallback }: { fallback?: React.ReactNode }) {
     setMarks((prev) => [...prev.filter((m) => m.status === 'asked').slice(-3), mark]);
     // Context only: if the student now just SAYS "idhi enti?", Nova knows what "idhi" is.
     void sendMark(mark, false);
-  }, [layout, sendMark, book.active]);
+  }, [layout, sendMark, book.active, replay]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (tool === 'hand' || e.button !== 0) return;

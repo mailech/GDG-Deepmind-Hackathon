@@ -58,6 +58,7 @@ const en = {
   thisClass: 'This class',
   history: 'Previous chats',
   newChat: 'New chat',
+  back: 'Back',
   clearHistory: 'Clear',
 };
 export type Strings = typeof en;
@@ -95,6 +96,7 @@ const te: Strings = {
   generating: 'తయారు చేస్తున్నా…',
   retry: 'మళ్ళీ try చెయ్యి',
   newChat: 'కొత్త chat',
+  back: 'వెనక్కి',
   history: 'పాత chats',
 };
 
@@ -128,6 +130,7 @@ const hi: Strings = {
   generating: 'बना रहा है…',
   retry: 'फिर कोशिश करें',
   newChat: 'नई चैट',
+  back: 'वापस',
   history: 'पिछली चैट',
 };
 

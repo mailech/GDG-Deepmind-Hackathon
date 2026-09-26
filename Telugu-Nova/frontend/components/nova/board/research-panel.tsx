@@ -27,7 +27,11 @@ export type ResearchOp =
   | { op: 'research'; id: string; query: string; findings: Finding[] }
   | { op: 'research_fail'; id: string; query: string };
 
-export function reduceResearch(items: ResearchItem[], op: ResearchOp): ResearchItem[] {
+export function reduceResearch(
+  items: ResearchItem[],
+  op: ResearchOp | { op: 'restore'; items: ResearchItem[] }
+): ResearchItem[] {
+  if (op.op === 'restore') return op.items;
   const rest = items.filter((i) => i.id !== op.id);
   const prev = items.find((i) => i.id === op.id);
   const at = prev?.at ?? Date.now();

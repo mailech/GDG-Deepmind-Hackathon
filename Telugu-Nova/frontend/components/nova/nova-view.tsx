@@ -12,6 +12,7 @@ import {
   useTrackToggle,
   useTrackTranscription,
 } from '@livekit/components-react';
+import { clearArchive } from '@/components/nova/board/archive';
 import { Board } from '@/components/nova/board/board';
 import { Canvas, type CanvasPayload } from '@/components/nova/canvas';
 import {
@@ -40,7 +41,7 @@ import {
  * the interface stays quiet — no hard contrast, no glow, nothing shouting.
  */
 
-type Screen = 'ready' | 'connecting' | 'live' | 'ended' | 'mic-error';
+type Screen = 'ready' | 'connecting' | 'live' | 'ended' | 'mic-error' | 'replay';
 
 // Comfort palette — muted, warm, low-contrast.
 const C = {
@@ -231,7 +232,7 @@ function PrimaryButton({
 // 1. READY
 // ---------------------------------------------------------------------------
 
-function ReadyScreen({ onStart }: { onStart: () => void }) {
+function ReadyScreen({ onStart, onOpen }: { onStart: () => void; onOpen: (c: Chat) => void }) {
   const t = useT();
   return (
     <Shell>
@@ -257,7 +258,7 @@ function ReadyScreen({ onStart }: { onStart: () => void }) {
       <p className="mt-4 text-[12px]" style={{ color: C.inkSoft }}>
         {t.micNote}
       </p>
-      <ChatHistory />
+      <ChatHistory onOpen={onOpen} />
     </Shell>
   );
 }
@@ -343,10 +344,9 @@ function clearChats() {
 }
 
 /** Previous chats, newest first; click one to read it. */
-function ChatHistory() {
+function ChatHistory({ onOpen }: { onOpen: (chat: Chat) => void }) {
   const t = useT();
   const [chats, setChats] = useState<Chat[]>([]);
-  const [open, setOpen] = useState<string | null>(null);
   useEffect(() => setChats(loadChats()), []);
   if (!chats.length) return null;
   return (
@@ -361,6 +361,7 @@ function ChatHistory() {
         <button
           onClick={() => {
             clearChats();
+            void clearArchive();
             setChats([]);
           }}
           className="text-[12px] underline"
@@ -372,7 +373,6 @@ function ChatHistory() {
       <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
         {chats.map((c) => {
           const first = c.lines.find((l) => l.mine)?.text || c.lines[0]?.text || '…';
-          const isOpen = open === c.id;
           return (
             <div
               key={c.id}
@@ -380,7 +380,7 @@ function ChatHistory() {
               style={{ background: C.paper, border: `1px solid ${C.line}` }}
             >
               <button
-                onClick={() => setOpen(isOpen ? null : c.id)}
+                onClick={() => onOpen(c)}
                 className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left"
               >
                 <span
@@ -397,13 +397,6 @@ function ChatHistory() {
                   {c.lines.length}
                 </span>
               </button>
-              {isOpen && (
-                <div className="flex flex-col gap-2.5 px-3 pb-3">
-                  {c.lines.map((l) => (
-                    <HistoryLine key={`${c.id}-${l.id}-${l.at}`} line={l} />
-                  ))}
-                </div>
-              )}
             </div>
           );
         })}
@@ -688,9 +681,82 @@ function LiveScreen({
       {/* RIGHT — the shared whiteboard. The older card canvas only shows when
           the cascade pipeline pushed cards and nothing has been drawn. */}
       <section className="min-h-[60svh] flex-1 lg:min-h-0">
-        <Board fallback={canvas.length ? <Canvas items={canvas} /> : undefined} />
+        <Board chatId={chatId} fallback={canvas.length ? <Canvas items={canvas} /> : undefined} />
       </section>
     </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// REPLAY — a previous chat, with its board, exactly as it was left
+// ---------------------------------------------------------------------------
+
+function ReplayScreen({
+  chat,
+  onBack,
+  onNew,
+}: {
+  chat: Chat;
+  onBack: () => void;
+  onNew: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex h-svh w-full flex-col lg:flex-row" style={{ background: C.paper }}>
+      <aside
+        className="flex w-full shrink-0 flex-col px-6 py-6 lg:h-svh lg:w-[380px]"
+        style={{ background: C.card, borderRight: `1px solid ${C.line}` }}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className="flex size-10 items-center justify-center rounded-xl font-mono text-sm font-semibold"
+            style={{ background: `${C.clay}1F`, color: C.clay }}
+          >
+            AA
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[16px] font-bold" style={{ color: C.ink }}>
+              {t.history}
+            </p>
+            <p
+              className="font-mono text-[10px] tracking-[0.16em] uppercase"
+              style={{ color: C.clay }}
+            >
+              {chat.at
+                ? new Date(chat.at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+                : ''}
+            </p>
+          </div>
+        </div>
+        <div
+          className="mt-5 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto rounded-2xl p-3.5"
+          style={{ background: C.paper, border: `1px solid ${C.line}` }}
+        >
+          {chat.lines.map((l) => (
+            <HistoryLine key={`r-${l.id}-${l.at}`} line={l} />
+          ))}
+        </div>
+        <div className="mt-4 flex w-full gap-3">
+          <button
+            onClick={onBack}
+            className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold transition hover:brightness-[0.98]"
+            style={{ background: C.paper, border: `1px solid ${C.line}`, color: C.ink }}
+          >
+            {t.back}
+          </button>
+          <button
+            onClick={onNew}
+            className="flex-1 rounded-2xl py-3.5 text-[14px] font-semibold text-white transition hover:brightness-[1.06]"
+            style={{ background: C.clay }}
+          >
+            {t.newChat}
+          </button>
+        </div>
+      </aside>
+      <section className="min-h-[60svh] flex-1 lg:min-h-0">
+        <Board chatId={chat.id} replay />
+      </section>
+    </div>
   );
 }
 
@@ -698,7 +764,15 @@ function LiveScreen({
 // 4. CALL ENDED
 // ---------------------------------------------------------------------------
 
-function EndedScreen({ turns, onRestart }: { turns: number; onRestart: () => void }) {
+function EndedScreen({
+  turns,
+  onRestart,
+  onOpen,
+}: {
+  turns: number;
+  onRestart: () => void;
+  onOpen: (c: Chat) => void;
+}) {
   const t = useT();
   return (
     <Shell>
@@ -710,7 +784,7 @@ function EndedScreen({ turns, onRestart }: { turns: number; onRestart: () => voi
         {turns > 0 ? t.endedTurns(turns) : t.endedNone}
       </p>
       <PrimaryButton onClick={onRestart}>{t.newChat}</PrimaryButton>
-      <ChatHistory />
+      <ChatHistory onOpen={onOpen} />
     </Shell>
   );
 }
@@ -868,6 +942,7 @@ function NovaViewInner() {
   }>({ id: 'nova', name: 'Acharya', role: 'Teacher', tint: C.clay, lang: 'English' });
   const wasConnected = useRef(false);
   const [chatId, setChatId] = useState(() => `c${Date.now()}`);
+  const [replaying, setReplaying] = useState<Chat | null>(null);
   // "New chat" mid-class: end this session, then go straight into a fresh one.
   const restarting = useRef(false);
 
@@ -932,6 +1007,7 @@ function NovaViewInner() {
       return;
     }
     setHasEnded(false);
+    setReplaying(null);
     setChatId(`c${Date.now()}`);
     setCanvas([]);
     setHandoffs([]);
@@ -961,12 +1037,16 @@ function NovaViewInner() {
   if (micError) screen = 'mic-error';
   else if (isConnected) screen = 'live';
   else if (connectionState === ConnectionState.Connecting) screen = 'connecting';
+  else if (replaying) screen = 'replay';
   else if (hasEnded) screen = 'ended';
 
   return (
     <AnimatePresence mode="wait">
       <motion.div key={screen} {...FADE}>
-        {screen === 'ready' && <ReadyScreen onStart={handleStart} />}
+        {screen === 'ready' && <ReadyScreen onStart={handleStart} onOpen={setReplaying} />}
+        {screen === 'replay' && replaying && (
+          <ReplayScreen chat={replaying} onBack={() => setReplaying(null)} onNew={handleStart} />
+        )}
         {screen === 'connecting' && <ConnectingScreen />}
         {screen === 'live' && (
           <LiveScreen
@@ -978,7 +1058,9 @@ function NovaViewInner() {
             handoffs={handoffs}
           />
         )}
-        {screen === 'ended' && <EndedScreen turns={turns} onRestart={handleStart} />}
+        {screen === 'ended' && (
+          <EndedScreen turns={turns} onRestart={handleStart} onOpen={setReplaying} />
+        )}
         {screen === 'mic-error' && <MicErrorScreen kind={micError!} onRetry={handleStart} />}
       </motion.div>
     </AnimatePresence>
