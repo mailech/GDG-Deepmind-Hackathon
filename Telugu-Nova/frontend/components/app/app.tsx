@@ -33,10 +33,12 @@ export function App({ appConfig }: AppProps) {
       : TokenSource.endpoint('/api/token');
   }, [appConfig]);
 
-  const session = useSession(
-    tokenSource,
-    appConfig.agentName ? { agentName: appConfig.agentName } : undefined
-  );
+  const session = useSession(tokenSource, {
+    ...(appConfig.agentName ? { agentName: appConfig.agentName } : {}),
+    // The cloud teacher sleeps when idle and takes ~25s to wake. The default
+    // 20s wait gave up first and showed "session ended"; wait up to 2 min.
+    agentConnectTimeoutMilliseconds: 120_000,
+  });
 
   return (
     <AgentSessionProvider session={session}>

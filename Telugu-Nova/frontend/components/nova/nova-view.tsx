@@ -670,6 +670,11 @@ function LiveScreen({
           >
             {status.en}
           </p>
+          {!agent.isConnected && (
+            <p className="mt-2 max-w-[16rem] text-center text-[12px]" style={{ color: C.inkSoft }}>
+              {tr.waking}
+            </p>
+          )}
           <div className="mt-3">
             <Bars
               tint={state === 'thinking' ? t.accent : status.tint}
