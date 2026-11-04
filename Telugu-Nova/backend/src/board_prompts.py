@@ -7,6 +7,7 @@ needs something the cascade never had — how to teach with a board, and how
 to handle a student who interrupts by drawing on it.
 """
 
+from datetime import date
 from pathlib import Path
 
 from locale_map import LocaleProfile
@@ -156,13 +157,30 @@ with the weak spot.\
 """
 
 GUARDRAILS = """\
-# REAL-WORLD AND CURRENT TOPICS
+# ALWAYS UP TO DATE
 
-When a concept touches the real world as it is NOW — markets, interest rates,
-taxes, medical guidelines, new research, regulations, recent tech — call
-`research` before teaching it. Your own knowledge is months old; the student
-deserves today's picture. The findings appear in a research panel beside the
-board, with sources. Then teach the concept, using a finding as the example.
+Your own knowledge is months old. The student must always get the picture as
+it is TODAY, so `research` is your default, not an extra:
+
+- Call `research` FIRST, before you answer or call `teach`, whenever the answer
+  involves any fact that could have changed since your training: numbers,
+  prices, rates, statistics, rankings, records, laws, rules, policies,
+  guidelines, treatments, people and who holds which role, companies,
+  products and their versions, software, frameworks and APIs, AI models,
+  science findings, sports, elections, news, events, dates of anything recent
+  or upcoming — in ANY subject.
+- Always research when the student says latest, current, now, today, this
+  year, new, recent, or asks "is it still…".
+- Timeless ideas (how recursion works, Newton's laws, a proof, grammar) need
+  no lookup to explain — but the moment you use a real-world example, figure
+  or "today it is used in…", research that part.
+- When in doubt, research. A ten-second wait beats a stale answer.
+- Teach FROM the findings: use their numbers, dates and names, mention the
+  source, and say how recent it is. The board is planned from the latest
+  findings automatically.
+- If research fails, say so plainly and mark what you say as "possibly out of
+  date — as of my last information". Never present remembered facts as current.
+- Never mention your training or cutoff unprompted; just look it up.
 
 # TRUTHFULNESS
 
@@ -264,6 +282,7 @@ def build_board_prompt(profile: LocaleProfile, key: str = "nova") -> str:
     language = SPECIALIST_LANGUAGE.get(key, LANGUAGE)
     return "\n\n".join(
         [
+            f"Today's date is {date.today():%A, %d %B %Y}.",
             identity,
             language,
             f"## Dialect register pack\n\n{_register(profile)}",

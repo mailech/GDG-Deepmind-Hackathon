@@ -57,6 +57,28 @@ logger = logging.getLogger("agent.board_session")
 
 LIVE_MODEL = os.getenv("LIVE_MODEL", "gemini-3.8-live")
 LIVE_VOICE = os.getenv("LIVE_VOICE", "Puck")
+
+
+async def on_typed_question(sess: AgentSession, ev: room_io.TextInputEvent) -> None:
+    """A question the student typed in the chat box (topic "lk.chat").
+
+    Same as the library default — interrupt, then answer — except it survives a
+    handoff. While one teacher hands over to another, the session refuses new
+    speech ("speech scheduling is draining"), and the default handler simply
+    drops the message. Here we wait for the new teacher and try again.
+    """
+    text = ev.text.strip()
+    if not text:
+        return
+    logger.info("typed question", extra={"chars": len(text)})
+    for _ in range(20):  # up to ~10 s
+        try:
+            await sess.interrupt()
+            sess.generate_reply(user_input=text)
+            return
+        except RuntimeError:
+            await asyncio.sleep(0.5)
+    logger.warning("typed question dropped: session never became ready")
 # Affective dialog: off by default because gemini-3.8-live rejects the flag
 # (1007 invalid argument, on both v1beta and v1alpha). The native-audio model
 # still hears tone directly, and the prompt tells it to act on it.
@@ -167,6 +189,8 @@ class Classroom:
         self.media = MediaMaker(room)
         self.director = VisualDirector()
         self._research_n = 0
+        # (when, question, findings) of the last research, for the planner.
+        self.recent_findings: tuple[float, str, str] | None = None
         self.student: str | None = None
         self.active = "nova"
         # Continuing a previous chat: the browser sends its history and board.
@@ -361,7 +385,16 @@ class BoardTeacher(Agent):
                 if spots and not focus:
                     focus = f"they previously struggled with: {spots[-1]}"
 
-        self.board.pending = asyncio.create_task(self.planner.plan(topic, level, focus))
+        # Research from the last few minutes goes to the planner, so numbers,
+        # names and versions on the board are today's, not remembered ones.
+        findings = ""
+        recent = self.cls.recent_findings
+        if recent and time.monotonic() - recent[0] < 300:
+            findings = f'Latest research ("{recent[1]}"):\n{recent[2]}'
+
+        self.board.pending = asyncio.create_task(
+            self.planner.plan(topic, level, focus, findings)
+        )
         logger.info("teach", extra={"topic": topic, "focus": focus})
         return (
             f"The board for '{topic}' is being prepared (a few seconds). Right now say "
@@ -754,11 +787,13 @@ class BoardTeacher(Agent):
     @function_tool
     async def research(self, context: RunContext, question: str) -> str:
         """Look up the LATEST real-world information, with sources, shown to the
-        student in the research panel. Use it for anything that changes over
-        time or where being current matters: finance (rates, markets, tax
-        rules), health (guidelines, treatments, studies), law and policy,
-        science news, recent technology, prices, statistics. Before calling,
-        say one short line like "ఒక్క నిమిషం, latest ఏముందో చూస్తా". Takes ~10s.
+        student in the research panel. Call it BEFORE answering whenever any
+        fact could have changed since your training — in any subject: numbers,
+        prices, rates, statistics, laws and policy, health guidelines, people
+        and roles, companies, products and versions, software and AI, science
+        findings, sports, news and events. When in doubt, call it. Before
+        calling, say one short line like "ఒక్క నిమిషం, latest ఏముందో చూస్తా".
+        Takes ~10s.
 
         Args:
             question: A specific search question, e.g. "latest RBI repo rate and
@@ -782,6 +817,9 @@ class BoardTeacher(Agent):
         lines = "\n".join(
             f"- {f['point']} (source: {f['source'] or 'web'})" for f in findings
         )
+        # The next lesson is planned from these, so the board carries today's
+        # facts and not the planner's memory.
+        cls.recent_findings = (time.monotonic(), question, lines)
         return (
             f"Findings, now listed in the research panel on the student's screen:\n{lines}\n"
             f"Tell them the one or two that matter most, in your own words, mentioning where "
@@ -1147,6 +1185,7 @@ async def run_board_session(
         agent=teacher,
         room=ctx.room,
         room_options=room_io.RoomOptions(
+            text_input=room_io.TextInputOptions(text_input_cb=on_typed_question),
             text_output=room_io.TextOutputOptions(sync_transcription=True),
             audio_input=room_io.AudioInputOptions(
                 noise_cancellation=noise_cancellation.BVC()

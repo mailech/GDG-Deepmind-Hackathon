@@ -31,7 +31,9 @@ const en = {
   speaking: 'Acharya is speaking',
   you: 'You',
   nova: 'Acharya',
-  transcriptEmpty: 'Speak — your conversation appears here',
+  transcriptEmpty: 'Speak or type — your conversation appears here',
+  typeHere: 'Type a question…',
+  send: 'Send',
   micOff: 'Mute',
   micOn: 'Unmute',
   endCall: 'End class',
@@ -79,7 +81,9 @@ const te: Strings = {
   speaking: 'ఆచార్య మాట్లాడుతుంది',
   you: 'నువ్వు',
   nova: 'ఆచార్య',
-  transcriptEmpty: 'మాట్లాడు — ఇక్కడ కనిపిస్తుంది',
+  transcriptEmpty: 'మాట్లాడు లేదా టైప్ చెయ్ — ఇక్కడ కనిపిస్తుంది',
+  typeHere: 'ప్రశ్న టైప్ చెయ్…',
+  send: 'పంపు',
   micOff: 'మైక్ ఆఫ్',
   micOn: 'మైక్ ఆన్',
   endCall: 'క్లాస్ ఆపు',
@@ -116,7 +120,9 @@ const hi: Strings = {
   thinking: 'सोच रहा हूँ…',
   speaking: 'Acharya बोल रहा है',
   you: 'आप',
-  transcriptEmpty: 'बोलिए — बातचीत यहाँ दिखेगी',
+  transcriptEmpty: 'बोलिए या लिखिए — बातचीत यहाँ दिखेगी',
+  typeHere: 'सवाल लिखिए…',
+  send: 'भेजें',
   micOff: 'माइक बंद',
   micOn: 'माइक चालू',
   endCall: 'क्लास खत्म',
@@ -158,6 +164,8 @@ const ta: Strings = {
   boardEmptyTitle: 'என்ன கற்றுக்கொள்வோம்?',
   dontGet: 'இது புரியவில்லை',
   looking: 'Acharya பார்க்கிறது…',
+  typeHere: 'கேள்வியைத் தட்டச்சு செய்யுங்கள்…',
+  send: 'அனுப்பு',
 };
 
 const kn: Strings = {
@@ -178,6 +186,8 @@ const kn: Strings = {
   boardEmptyTitle: 'ಏನು ಕಲಿಯೋಣ?',
   dontGet: 'ಇದು ಅರ್ಥವಾಗಲಿಲ್ಲ',
   looking: 'Acharya ನೋಡುತ್ತಿದೆ…',
+  typeHere: 'ಪ್ರಶ್ನೆ ಟೈಪ್ ಮಾಡಿ…',
+  send: 'ಕಳುಹಿಸಿ',
 };
 
 export const STRINGS: Record<Lang, Strings> = { en, te, hi, ta, kn };

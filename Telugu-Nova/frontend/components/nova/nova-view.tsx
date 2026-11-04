@@ -12,7 +12,13 @@ import {
   useTrackToggle,
   useTrackTranscription,
 } from '@livekit/components-react';
-import { HouseIcon, MicrophoneIcon, MicrophoneSlashIcon, PlusIcon } from '@phosphor-icons/react';
+import {
+  HouseIcon,
+  MicrophoneIcon,
+  MicrophoneSlashIcon,
+  PaperPlaneRightIcon,
+  PlusIcon,
+} from '@phosphor-icons/react';
 import { clearArchive, loadBoard } from '@/components/nova/board/archive';
 import { Board } from '@/components/nova/board/board';
 import { Canvas, type CanvasPayload } from '@/components/nova/canvas';
@@ -488,6 +494,75 @@ function ControlButton({
   );
 }
 
+/** Type a question instead of saying it. Enter sends; Shift+Enter is a new line. */
+function ChatBox({
+  onSend,
+  disabled,
+  placeholder,
+  sendLabel,
+  edge,
+  paper,
+  accent,
+}: {
+  onSend: (text: string) => Promise<boolean>;
+  disabled: boolean;
+  placeholder: string;
+  sendLabel: string;
+  edge: string;
+  paper: string;
+  accent: string;
+}) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ready = !disabled && !busy && text.trim().length > 0;
+
+  const submit = async () => {
+    if (!ready) return;
+    setBusy(true);
+    const ok = await onSend(text.trim());
+    setBusy(false);
+    if (ok) setText('');
+  };
+
+  return (
+    <form
+      className="mt-3 flex items-end gap-2 rounded-2xl p-1.5"
+      style={{ background: paper, border: `1px solid ${edge}` }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            void submit();
+          }
+        }}
+        rows={1}
+        placeholder={placeholder}
+        disabled={disabled}
+        aria-label={placeholder}
+        className="max-h-28 min-h-[40px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[14px] leading-snug outline-none disabled:opacity-50"
+        style={{ color: C.ink, fieldSizing: 'content' } as React.CSSProperties}
+      />
+      <button
+        type="submit"
+        disabled={!ready}
+        title={sendLabel}
+        aria-label={sendLabel}
+        className="flex size-10 shrink-0 items-center justify-center rounded-xl text-white transition hover:brightness-[1.06] active:scale-[0.96] disabled:opacity-40"
+        style={{ background: accent }}
+      >
+        <PaperPlaneRightIcon size={18} weight="fill" />
+      </button>
+    </form>
+  );
+}
+
 function LiveScreen({
   chatId,
   resume,
@@ -519,11 +594,33 @@ function LiveScreen({
   const { segments: agentSegments } = useTrackTranscription(agentTrack);
   const { segments: userSegments } = useTrackTranscription(localTrack);
 
-  // Track segments are the only source. Session messages are NOT merged in:
-  // with text_output enabled the agent publishes each utterance as a message
-  // as well, so including both prints every line twice.
+  // Typed questions. They go to the teacher on the "lk.chat" text stream,
+  // which the agent session reads as user input (it interrupts and replies,
+  // same as speech). They never appear on an audio track, so they are kept
+  // here and merged into the transcript.
+  const [typed, setTyped] = useState<{ id: string; mine: true; text: string; at: number }[]>([]);
+  const sendTyped = useCallback(
+    async (text: string) => {
+      const room = session.room;
+      if (!room) return false;
+      try {
+        await room.localParticipant.sendText(text, { topic: 'lk.chat' });
+      } catch {
+        return false;
+      }
+      const at = Date.now();
+      setTyped((prev) => [...prev, { id: `t-${at}`, mine: true, text, at }]);
+      return true;
+    },
+    [session.room]
+  );
+
+  // Track segments are the only source for spoken lines. Session messages are
+  // NOT merged in: with text_output enabled the agent publishes each utterance
+  // as a message as well, so including both prints every line twice.
   const lines = dedupe(
     [
+      ...typed,
       ...userSegments.map((sg) => ({
         id: `u-${sg.id}`,
         mine: true,
@@ -729,7 +826,17 @@ function LiveScreen({
           )}
         </div>
 
-        <div className="mt-4 flex w-full items-stretch gap-2">
+        <ChatBox
+          onSend={sendTyped}
+          disabled={!agent.isConnected}
+          placeholder={tr.typeHere}
+          sendLabel={tr.send}
+          edge={t.edge}
+          paper={t.paper}
+          accent={t.accent}
+        />
+
+        <div className="mt-3 flex w-full items-stretch gap-2">
           <ControlButton
             label={micOn ? tr.micOff : tr.micOn}
             onClick={() => toggleMic()}

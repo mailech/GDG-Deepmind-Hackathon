@@ -33,6 +33,7 @@ import logging
 import os
 import re
 import time
+from datetime import date
 from typing import Any
 
 from google import genai
@@ -206,10 +207,15 @@ You plan whiteboard lessons for an expert teacher who explains out loud while
 drawing — any subject: computer science, finance, medicine, physics, law,
 economics, biology, history. You write the BOARD, not the lecture.
 
+Today is {today}.
 Topic: {topic}
 Student: {level}
-{focus}
+{focus}{findings}
 Rules:
+- Every fact on the board must be true TODAY. When latest research is given
+  above, its numbers, names, versions and dates win over what you remember —
+  use them, and cite the year. Never write a figure you are unsure is still
+  current; leave it out instead.
 - 3 to 6 steps. Each step is one idea, and adds at most 3 elements.
 - The board is written in English (technical terms stay English). The teacher
   speaks the explanation separately, so the board carries only what must be SEEN.
@@ -269,12 +275,16 @@ class LessonPlanner:
         except Exception:
             logger.debug("planner warm-up failed", exc_info=True)
 
-    async def plan(self, topic: str, level: str = "", focus: str = "") -> dict:
+    async def plan(
+        self, topic: str, level: str = "", focus: str = "", findings: str = ""
+    ) -> dict:
         t0 = time.perf_counter()
         prompt = PLANNER_PROMPT.format(
+            today=date.today().isoformat(),
             topic=topic,
             level=level or "an Indian engineering undergraduate",
             focus=f"Focus on: {focus}\n" if focus else "",
+            findings=f"{findings}\n" if findings else "",
         )
         config = types.GenerateContentConfig(
             response_mime_type="application/json",

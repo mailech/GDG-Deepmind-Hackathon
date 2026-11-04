@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import time
+from datetime import date
 
 from google import genai
 from google.genai import types
@@ -121,7 +122,8 @@ DIRECTOR_SCHEMA = _S(
 )
 
 PROMPT = """\
-You are the visual director for a live teacher. The student just said:
+You are the visual director for a live teacher. Today is {today}.
+The student just said:
 
 "{question}"
 
@@ -150,7 +152,9 @@ Design the visuals for THIS question. Rules:
   student remember it — most science, medicine, geography, engineering and
   real-world topics. Leave it empty for abstract or purely numeric topics.
 - video_prompt: only when motion is the whole point. {video_rule}
-- All text in English. Be accurate — no invented facts.
+- All text in English. Be accurate — no invented facts. Facts must be current
+  as of today: if you are not sure a number, name or version is still true,
+  leave it out (the teacher looks those up live).
 """
 
 
@@ -185,7 +189,12 @@ class VisualDirector:
             if self.video_allowed()
             else "A clip was made very recently, so leave video_prompt empty."
         )
-        prompt = PROMPT.format(question=question, board=board, video_rule=rule)
+        prompt = PROMPT.format(
+            today=date.today().isoformat(),
+            question=question,
+            board=board,
+            video_rule=rule,
+        )
         for model in DIRECTOR_MODELS:
             try:
                 resp = await asyncio.wait_for(
