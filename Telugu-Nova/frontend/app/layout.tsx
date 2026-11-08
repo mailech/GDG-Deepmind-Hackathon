@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { Kalam, Mandali, Public_Sans } from 'next/font/google';
 import localFont from 'next/font/local';
 import { headers } from 'next/headers';
@@ -52,6 +53,12 @@ const commitMono = localFont({
     },
   ],
 });
+
+// The public address. Link previews (og:image) are built from it; without it,
+// Vercel falls back to the project's original *.vercel.app domain.
+export const metadata: Metadata = {
+  metadataBase: new URL(process.env.SITE_URL || 'https://live-ai-teacher.vercel.app'),
+};
 
 interface RootLayoutProps {
   children: React.ReactNode;

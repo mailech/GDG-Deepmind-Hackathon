@@ -1,6 +1,6 @@
 # Agent Acharya (AA) — a live AI teacher on a shared whiteboard
 
-**Live demo:** https://gdg-deepmind-hackathon.vercel.app
+**Live demo:** https://live-ai-teacher.vercel.app
 
 Agent Acharya is a voice-first teacher. You talk to it, and it teaches you on a
 live whiteboard — drawing diagrams, writing, generating pictures and pointing
